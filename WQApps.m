@@ -12,7 +12,10 @@
 #import "WQLaunchServices.h"
 #import "WQCore.h"
 #import "WQAppsSupport.h"
+#import "WQArchive.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <errno.h>
+#import <sys/mount.h>
 #import <sys/stat.h>
 
 #pragma mark - Apps manager
@@ -33,6 +36,9 @@
 @implementation WQAppItem
 @end
 
+@interface WQAppsViewController () <UIDocumentPickerDelegate>
+@end
+
 @implementation WQAppsViewController {
     NSArray<WQAppItem *> *_apps;
     NSArray<WQAppItem *> *_visibleApps;
@@ -45,6 +51,7 @@
     NSArray<NSString *> *_indexTitles;
     NSDictionary<NSString *, NSNumber *> *_indexRows;
     NSString *_restoreBundleID;
+    WQAppItem *_importApp;
 }
 
 - (instancetype)initRestoringBundleID:(NSString *)bundleID
@@ -348,15 +355,18 @@ static BOOL wq_purge_and_verify(NSString *dir, unsigned long long *freed, NSStri
 
 // Copies the app's Documents and Library into a new complete backup. Returns
 // its path, or nil with *error (nothing is left behind then).
-static NSString *wq_make_app_backup(NSString *bundleID, NSString *container, dev_t expectedDevice,
-                                    ino_t expectedInode, NSString *reason, NSString **error)
+// Copies Documents and Library from `container` (an app's data container,
+// or for imports a local folder) into a new verified backup of bundleID.
+// `stillValid` (optional) re-checks the source before and after publishing.
+static NSString *wq_make_backup_from(NSString *bundleID, NSString *container, NSString *reason,
+                                     BOOL (^stillValid)(NSString **error), NSString **error)
 {
     if (!WQAppsSupportBundleIDValid(bundleID)) {
         if (error) *error = @"The app identifier is not a valid bundle identifier";
         return nil;
     }
     NSFileManager *fm = NSFileManager.defaultManager;
-    if (!wq_validate_container(container, bundleID, expectedDevice, expectedInode, error)) return nil;
+    if (stillValid && !stillValid(error)) return nil;
     NSString *root = wq_app_backup_root_for_bundle(bundleID);
     if (!root.length) {
         if (error) *error = @"Cannot locate the app backup folder";
@@ -431,7 +441,7 @@ static NSString *wq_make_app_backup(NSString *bundleID, NSString *container, dev
     }
     BOOL published = NO;
     if (ok) {
-        if (!wq_validate_container(container, bundleID, expectedDevice, expectedInode, error)) ok = NO;
+        if (stillValid && !stillValid(error)) ok = NO;
     }
     if (ok) {
         if (rename(staging.fileSystemRepresentation, final.fileSystemRepresentation) != 0) {
@@ -441,7 +451,7 @@ static NSString *wq_make_app_backup(NSString *bundleID, NSString *container, dev
             published = YES;
             NSString *validationError = nil;
             if (!wq_validate_backup(final, bundleID, NO, NULL, NULL, NULL, &validationError) ||
-                !wq_validate_container(container, bundleID, expectedDevice, expectedInode, &validationError)) {
+                (stillValid && !stillValid(&validationError))) {
                 ok = NO;
                 if (error) *error = validationError ?: @"The app container changed while the backup was being finalized";
             }
@@ -454,6 +464,18 @@ static NSString *wq_make_app_backup(NSString *bundleID, NSString *container, dev
     }
     wq_log(@"app backup %@ -> %@ (%@)", bundleID, final.lastPathComponent, [parts componentsJoinedByString:@", "]);
     return final;
+}
+
+#pragma mark - Import as Backup
+
+static NSString *const kBackupReasonImported = @"Imported";
+
+static NSString *wq_make_app_backup(NSString *bundleID, NSString *container, dev_t expectedDevice,
+                                    ino_t expectedInode, NSString *reason, NSString **error)
+{
+    return wq_make_backup_from(bundleID, container, reason, ^BOOL(NSString **validationError) {
+        return wq_validate_container(container, bundleID, expectedDevice, expectedInode, validationError);
+    }, error);
 }
 
 static BOOL wq_dir_size_cancellable(NSString *dir, WQScanCancellation *cancellation,
@@ -912,6 +934,9 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
     [sheet addAction:[UIAlertAction actionWithTitle:@"Back Up Data" style:UIAlertActionStyleDefault handler:^(UIAlertAction *__unused a) {
         [self backUp:app then:nil];
     }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Import as Backup…" style:UIAlertActionStyleDefault handler:^(UIAlertAction *__unused a) {
+        [self pickImportFor:app];
+    }]];
     NSArray *backups = app.backups;
     NSString *latest = backups.firstObject[@"path"];
     if (latest) {
@@ -949,6 +974,113 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
     [self setBusy:NO status:nil];
     wq_alert(self, title, message);
     [self scan];
+}
+
+// Import as Backup: a folder or ZIP with Documents and/or Library (from the
+// Files app, another device's shared backup or another tool) becomes a
+// normal, verified backup of this app, ready to restore.
+- (void)pickImportFor:(WQAppItem *)app
+{
+    _importApp = app;
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
+        initForOpeningContentTypes:@[UTTypeFolder, UTTypeZIP] asCopy:NO];
+    picker.delegate = self;
+    picker.allowsMultipleSelection = NO;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
+{
+    WQAppItem *app = _importApp;
+    _importApp = nil;
+    if (app && urls.firstObject) [self importBackupFrom:urls.firstObject for:app confirmedOwner:NO];
+}
+
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller
+{
+    _importApp = nil;
+}
+
+- (void)importBackupFrom:(NSURL *)url for:(WQAppItem *)app confirmedOwner:(BOOL)confirmed
+{
+    [self setBusy:YES status:[NSString stringWithFormat:@"Importing a backup of %@…", app.name]];
+    NSString *bundleID = app.bundleID;
+    dispatch_async(wq_io(), ^{
+        BOOL scoped = [url startAccessingSecurityScopedResource];
+        __block NSString *error = nil, *dest = nil, *declared = nil;
+        __block NSArray *ignored = @[];
+        NSString *work = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                          [@"wq-import-" stringByAppendingString:NSUUID.UUID.UUIDString]];
+        NSFileManager *fm = NSFileManager.defaultManager;
+        NSError *coordinationError = nil;
+        // Coordinated, so a folder in iCloud Drive is downloaded first.
+        [[NSFileCoordinator new] coordinateReadingItemAtURL:url options:NSFileCoordinatorReadingWithoutChanges
+                                                      error:&coordinationError byAccessor:^(NSURL *readURL) {
+            NSString *source = readURL.path;
+            BOOL isDir = NO;
+            [fm fileExistsAtPath:source isDirectory:&isDir];
+            if (!isDir) {
+                // A ZIP: unpack it locally first, with the usual safety checks.
+                struct statfs fs;
+                unsigned long long available = statfs(NSTemporaryDirectory().fileSystemRepresentation, &fs) == 0
+                    ? (unsigned long long)fs.f_bavail * fs.f_bsize : 0;
+                unsigned long long reserve = 256ull * 1024 * 1024;
+                unsigned long long limit = available > reserve ? (available - reserve) / 2 : 0;
+                [fm createDirectoryAtPath:work withIntermediateDirectories:YES attributes:nil error:nil];
+                NSUInteger files = 0, skipped = 0;
+                if (!wq_zip_extract(source, work, wq_archive_posix_io(), limit, nil, nil, &files, &skipped, &error)) {
+                    error = [NSString stringWithFormat:@"The ZIP couldn't be unpacked: %@", error ?: @"unknown error"];
+                    return;
+                }
+                source = work;
+            }
+            NSString *root = WQAppsSupportImportRoot(source, &error);
+            if (!root) return;
+            declared = WQAppsSupportImportDeclaredBundle(root);
+            if (declared.length && ![declared isEqualToString:bundleID] && !confirmed) return;   // ask first
+            ignored = WQAppsSupportImportIgnored(root);
+            dest = wq_make_backup_from(bundleID, root, kBackupReasonImported, nil, &error);
+        }];
+        if (coordinationError && !error && !dest) error = coordinationError.localizedDescription;
+        if (scoped) [url stopAccessingSecurityScopedResource];
+        [fm removeItemAtPath:work error:nil];
+        wq_log(@"import backup %@ from %@: %@%@", bundleID, url.lastPathComponent,
+               dest ? dest.lastPathComponent : (error ?: @"needs confirmation"),
+               ignored.count ? [NSString stringWithFormat:@" (left out: %@)", [ignored componentsJoinedByString:@", "]] : @"");
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self setBusy:NO status:nil];
+            if (!dest && !error && declared.length) {
+                UIAlertController *ask = [UIAlertController alertControllerWithTitle:@"Different app?"
+                    message:[NSString stringWithFormat:@"This data says it belongs to %@, not %@ (%@). Importing it as a backup of %@ "
+                             "and restoring it can break the app.", declared, app.name, bundleID, app.name]
+                    preferredStyle:UIAlertControllerStyleAlert];
+                [ask addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+                [ask addAction:[UIAlertAction actionWithTitle:@"Import Anyway" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *__unused a) {
+                    [self importBackupFrom:url for:app confirmedOwner:YES];
+                }]];
+                [self presentViewController:ask animated:YES completion:nil];
+                return;
+            }
+            if (!dest) {
+                wq_alert(self, @"Not imported", [NSString stringWithFormat:@"%@ Nothing was changed.", error ?: @"The import failed."]);
+                return;
+            }
+            NSString *message = [NSString stringWithFormat:@"Saved as backup %@ of %@. It's verified like any other backup "
+                                 "and can be restored from Apps.%@", dest.lastPathComponent, app.name,
+                                 ignored.count ? [NSString stringWithFormat:@"\n\nLeft out (only Documents and Library are backed up): %@.",
+                                                  [ignored componentsJoinedByString:@", "]] : @""];
+            UIAlertController *done = [UIAlertController alertControllerWithTitle:@"Imported" message:message
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [done addAction:[UIAlertAction actionWithTitle:@"Done" style:UIAlertActionStyleCancel handler:^(UIAlertAction *__unused a) {
+                [self scan];
+            }]];
+            [done addAction:[UIAlertAction actionWithTitle:@"Restore Now…" style:UIAlertActionStyleDefault handler:^(UIAlertAction *__unused a) {
+                self->_restoreBundleID = bundleID;   // offered once the list is read again
+                [self scan];
+            }]];
+            [self presentViewController:done animated:YES completion:nil];
+        });
+    });
 }
 
 - (void)backUp:(WQAppItem *)app then:(void (^)(BOOL ok))next
