@@ -1057,8 +1057,10 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
            backup[@"reason"] ?: @"no typed manifest"];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Restore %@?", app.name]
         message:[NSString stringWithFormat:@"Replaces the app's current Documents and Library with the backup from %@; tmp is left untouched. "
-                 "The current data is backed up first, and put back if anything fails. Close the app first: a running app can make the operation non-snapshot-consistent.%@",
-                 wq_backup_label(backup), warning]
+                 "The current data is backed up first, and put back if anything fails%@. Close the app first: a running app can make the operation non-snapshot-consistent.%@",
+                 wq_backup_label(backup),
+                 wq_keep_before_restore() ? @"" : @"; after a successful restore that backup is deleted (Keep Data Before Restore is off)",
+                 warning]
         preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Restore" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *__unused a) {
@@ -1409,6 +1411,21 @@ NSString *wq_recover_interrupted_restore(void)
             wq_log(@"restore %@ from %@: OK", app.bundleID, backup.lastPathComponent);
             *title = @"Restored";
             NSString *cleanup = removed ? @"" : @" The recovery journal is committed and will be cleaned up at the next launch.";
+            // Keep Data Before Restore off: the safety backup was only needed
+            // while the restore could still fail. Kept while the journal still
+            // points at it.
+            NSString *discardError = nil;
+            if (!wq_keep_before_restore() && removed) {
+                if (wq_delete_backup(safety, &discardError)) {
+                    wq_log(@"restore %@: removed the before-restore backup %@ (Keep Data Before Restore is off)",
+                           app.bundleID, safety.lastPathComponent);
+                    *message = [NSString stringWithFormat:@"Open %@ to use the restored Documents and Library; tmp was not changed. "
+                                "The data from before was not kept (Keep Data Before Restore is off).", app.name];
+                    return;
+                }
+                wq_log(@"restore %@: couldn't remove the before-restore backup %@ (%@)", app.bundleID,
+                       safety.lastPathComponent, discardError);
+            }
             *message = [NSString stringWithFormat:@"Open %@ to use the restored Documents and Library. The data from before is kept as backup %@; tmp was not changed. Keep the app closed during this operation.%@",
                         app.name, safety.lastPathComponent, cleanup];
             return;

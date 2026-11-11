@@ -86,6 +86,9 @@ new files.
 - **Show Item Counts** (start screen, off by default): folders show how many
   items they hold. Every subfolder is listed for this, which slows down
   folders with many subfolders.
+- **Keep Data Before Restore** (start screen, on by default): restoring an app
+  backup first backs up the app's current data, so a failed restore can be
+  undone. Turn it off to delete that backup once the restore succeeded.
 
 App names come from LaunchServices' own database, read from lsd's container
 (the LaunchServices API itself refuses this app on 27.x). Apple services that

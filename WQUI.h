@@ -19,6 +19,10 @@ void wq_alert(UIViewController *host, NSString *title, NSString *_Nullable messa
 // clean action is hidden or refused.
 BOOL wq_deleting_allowed(void);
 void wq_set_deleting_allowed(BOOL allowed);
+// Settings → Keep Data Before Restore (on by default). When off, the safety
+// backup an app restore makes first is deleted once the restore succeeded.
+BOOL wq_keep_before_restore(void);
+void wq_set_keep_before_restore(BOOL keep);
 // YES (after telling the user) when deleting is turned off.
 BOOL wq_refuse_if_deleting_off(UIViewController *host);
 NSString *wq_size_text(unsigned long long size);

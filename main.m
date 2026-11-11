@@ -2557,7 +2557,7 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
     // System Groups is the extra last row, on iOS 27 only.
-    if (section == 2) return 2;
+    if (section == 2) return 3;
     return section == 0 ? (NSInteger)_locations.count + (wq_system_areas_reachable() ? 1 : 0) : 6;
 }
 
@@ -2574,7 +2574,9 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
         return @"Allow Deleting: when off, nothing can be deleted: no Delete or swipe to delete in folders and backups, "
                "no Clear Data in Apps and no cleaning in the Cache Cleaner. Saving, moving and restoring still work.\n\n"
                "Show Item Counts: shows how many items each folder holds. Every subfolder has to be listed for this, "
-               "which slows down folders with many subfolders, especially in other apps' data.";
+               "which slows down folders with many subfolders, especially in other apps' data.\n\n"
+               "Keep Data Before Restore: restoring an app backup first backs up the app's current data, so a failed "
+               "restore can be undone. When off, that backup is deleted once the restore succeeded.";
     return section == 1
         ? @"Overwritten and deleted files are copied to Backups first (also visible in the Files app). Long-press a backup to restore it."
         : nil;
@@ -2588,14 +2590,15 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
     cell.accessoryView = nil;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     if (indexPath.section == 2) {
-        BOOL counts = indexPath.row == 1;
-        c.text = counts ? @"Show Item Counts" : @"Allow Deleting";
-        c.image = [UIImage systemImageNamed:counts ? @"number" : @"trash.slash"];
+        NSInteger row = indexPath.row;
+        c.text = @[@"Allow Deleting", @"Show Item Counts", @"Keep Data Before Restore"][(NSUInteger)row];
+        c.image = [UIImage systemImageNamed:@[@"trash.slash", @"number", @"clock.arrow.circlepath"][(NSUInteger)row]];
         UISwitch *toggle = [UISwitch new];
-        toggle.on = counts ? wq_show_item_counts() : wq_deleting_allowed();
+        toggle.on = row == 1 ? wq_show_item_counts() : row == 2 ? wq_keep_before_restore() : wq_deleting_allowed();
         [toggle addAction:[UIAction actionWithHandler:^(UIAction *action) {
             BOOL on = ((UISwitch *)action.sender).isOn;
-            if (counts) [NSUserDefaults.standardUserDefaults setBool:on forKey:kWQShowItemCountsPref];
+            if (row == 1) [NSUserDefaults.standardUserDefaults setBool:on forKey:kWQShowItemCountsPref];
+            else if (row == 2) wq_set_keep_before_restore(on);
             else wq_set_deleting_allowed(on);
         }] forControlEvents:UIControlEventValueChanged];
         cell.contentConfiguration = c;
