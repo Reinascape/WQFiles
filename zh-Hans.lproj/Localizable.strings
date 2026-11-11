@@ -118,7 +118,6 @@
 "WQ Files does not follow symbolic links for viewing, sharing or editing." = "WQ Files 在查看、分享或编辑时不会跟随符号链接。";
 "WQ Files does not follow symbolic links for viewing, sharing or editing. Use Copy Path to open the target explicitly." = "WQ Files 在查看、分享或编辑时不会跟随符号链接。请使用“复制路径”显式打开目标。";
 "Symbolic links are not followed for viewing, sharing or editing." = "查看、分享或编辑时不会跟随符号链接。";
-"This permanently removes %lu complete backup%@ and everything inside them. It cannot be undone." = "这会永久删除 %lu 个完整备份%@及其中的所有内容，且无法撤销。";
 "Delete backups?" = "删除备份？";
 "Delete backup?" = "删除备份？";
 "Delete \"%@\"?" = "删除“%@”？";
@@ -339,8 +338,6 @@
 "Scanning" = "正在扫描";
 "Reclaimable" = "可释放";
 "summary" = "摘要";
-"Delete Library/Caches and tmp for %lu app%@, plus Crash Logs" = "删除 %lu 个 App%@ 的缓存（Library/Caches）和临时文件（tmp），并删除崩溃日志";
-"Delete Library/Caches and tmp for %lu app%@" = "删除 %lu 个 App%@ 的缓存（Library/Caches）和临时文件（tmp）";
 "Delete Crash Logs" = "删除崩溃日志";
 "Delete the selected cache targets" = "删除所选缓存目标";
 "Clears each selected app's Library/Caches and tmp, and deletes selected Crash Logs. Apps rebuild their caches as you use them; some keep offline content (music, maps, downloads) there and will download it again. No backup is kept." = "清除每个所选 App 的缓存（Library/Caches）和临时文件（tmp），并删除所选崩溃日志。App 会在使用过程中重建缓存；部分 App 会在其中保留离线内容（音乐、地图、下载），之后会重新下载。不会保留备份。";
@@ -349,7 +346,6 @@
 "Select app caches or Crash Logs to see the deletion scope. No backup is kept." = "选择 App 缓存或崩溃日志以查看删除范围。不会保留备份。";
 "Select None" = "全不选";
 "Select Large Caches (50 MB+)" = "选择大型缓存（50 MB 以上）";
-"No %@ container%@ found." = "未找到 %@ 容器%@。";
 "Scan incomplete: %@. See Log." = "扫描不完整：%@。请查看日志。";
 "limited rows are excluded; the remaining rows can still be cleaned" = "受限行已排除；其余行仍可清理";
 "Crash Logs" = "崩溃日志";
@@ -378,11 +374,6 @@
 " Close running apps first." = " 请先关闭正在运行的 App。";
 "%lu of %lu" = "%lu / %lu";
 "%lu apps and extensions" = "%lu 个 App 和扩展";
-"%lu container enumeration%@ failed" = "%lu 个容器枚举失败%@";
-"%lu container%@ had limited access" = "%lu 个容器访问受限%@";
-"%lu cache tree measurement%@ was limited" = "%lu 个缓存目录测量受限%@";
-"%lu container%@ had no identifier or identity" = "%lu 个容器没有标识符或标识%@";
-"%@ selected in %lu item%@" = "已选择 %@，共 %lu 个项%@";
 "Share in progress" = "正在分享";
 "Wait for the current share to finish before starting another." = "请等待当前分享完成后再开始另一个。";
 "Cannot share" = "无法分享";
@@ -553,7 +544,6 @@
 " · %@ left" = " · 剩余 %@";
 "the app folders" = "App 文件夹";
 "Signing problem: no App Group" = "签名问题：缺少应用组";
-"WQ Files needs an App Group to reach other apps' folders, and the tool that signed it removed it. Without it nothing can be opened, and app lists stay empty or show \"NO TOKEN\".\n\nRe-install WQ Files with AltStore, SideStore or Sideloadly (they create the App Group), or with a provisioning profile that contains one. Wildcard certificates (as used by many Feather/ESign setups) can't." = "WQ Files 需要应用组（App Group）才能访问其他应用的文件夹，而签名工具把它移除了。没有它，任何内容都无法打开，应用列表会为空或显示“无令牌”。\n\n请使用 AltStore、SideStore 或 Sideloadly 重新安装 WQ Files（它们会创建应用组），或使用包含应用组的描述文件。通配符证书（许多 Feather/ESign 方案使用）无法做到。";
 "Signing Help" = "签名帮助";
 "WQ Files %@ (%@) by kolbicz" = "WQ Files %@（%@），作者 kolbicz";
 "SQLite Viewer" = "SQLite 查看器";
@@ -621,8 +611,6 @@
 "Extracting" = "正在解压";
 "Cannot compress" = "无法压缩";
 "Cannot extract" = "无法解压";
-"Created %@. %lu symbolic link%@ or special file%@ were left out." = "已创建 %@。已排除 %lu 个符号链接%@或特殊文件%@。";
-"Extracted %lu file%@ into %@. %lu symbolic link%@ in the ZIP were left out." = "已将 %lu 个文件%@解压到 %@。ZIP 中的 %lu 个符号链接%@已排除。";
 "Copying failed." = "复制失败。";
 "Can't create a temporary folder" = "无法创建临时文件夹";
 "Not a ZIP file" = "不是 ZIP 文件";
@@ -683,8 +671,6 @@
 "%@ · %@ · container identity unavailable" = "%@ · %@ · 容器标识不可用";
 "text" = "文本";
 "Home.Button" = "首页";
-"Restore.FileBackup" = "还原文件";
-"Restore.AppBackup" = "还原备份";
 "Please wait…" = "请稍候…";
 "%@ will be overwritten in place. The current version is backed up to Backups first." = "将原地覆盖 %@。当前版本会先备份到“备份”。";
 "%@, %@" = "%@，%@";
@@ -724,3 +710,42 @@
 "Backup storage cannot be changed through the file browser." = "不能通过文件浏览器更改备份存储。";
 "An item named \"%@\" is already there" = "已存在名为“%@”的项目";
 "Items can't be moved to another volume" = "项目不能移动到其他卷";
+
+/* Plural forms and WQ Files 0.9 localization additions. */
+"%@ isn't installed, or WQ Files can't reach its data. A backup can only be restored into the installed app: install it, open it once, then try again." = "未安装 %@，或 WQ Files 无法访问其数据。备份只能还原到已安装的 App：请先安装并打开一次，然后重试。";
+"%@ selected in %lu item" = "已选择 %@，共 %lu 个项目";
+"%@ selected in %lu items" = "已选择 %@，共 %lu 个项目";
+"%ld item" = "%ld 个项目";
+"%ld items" = "%ld 个项目";
+"%lu cache tree measurement was limited" = "%lu 个缓存目录测量受限";
+"%lu cache tree measurements were limited" = "%lu 个缓存目录测量受限";
+"%lu container enumeration failed" = "%lu 个容器枚举失败";
+"%lu container enumerations failed" = "%lu 个容器枚举失败";
+"%lu container had limited access" = "%lu 个容器访问受限";
+"%lu container had no identifier or identity" = "%lu 个容器没有标识符或标识";
+"%lu containers had limited access" = "%lu 个容器访问受限";
+"%lu containers had no identifier or identity" = "%lu 个容器没有标识符或标识";
+"Allow Deleting" = "允许删除";
+"Allow Deleting: when off, nothing can be deleted: no Delete or swipe to delete in folders and backups, no Clear Data in Apps and no cleaning in the Cache Cleaner. Saving, moving and restoring still work.\n\nShow Item Counts: shows how many items each folder holds. Every subfolder has to be listed for this, which slows down folders with many subfolders, especially in other apps' data." = "允许删除：关闭后，将无法删除任何内容：文件夹和备份中不显示“删除”或左滑删除，“App”中不显示“清除数据”，缓存清理器中也不执行清理。保存、移动和还原仍可使用。\n\n显示项目数量：显示每个文件夹中的项目数量。启用后需要列出每个子文件夹，因此在子文件夹较多的目录（尤其是其他 App 的数据）中会变慢。";
+"App not found" = "未找到 App";
+"Created %@. %lu symbolic link or special file was left out." = "已创建 %@。已排除 %lu 个符号链接或特殊文件。";
+"Created %@. %lu symbolic links or special files were left out." = "已创建 %@。已排除 %lu 个符号链接或特殊文件。";
+"Delete Library/Caches and tmp for %lu app" = "删除 %lu 个 App 的缓存（Library/Caches）和临时文件（tmp）";
+"Delete Library/Caches and tmp for %lu app, plus Crash Logs" = "删除 %lu 个 App 的缓存（Library/Caches）和临时文件（tmp），并删除崩溃日志";
+"Delete Library/Caches and tmp for %lu apps" = "删除 %lu 个 App 的缓存（Library/Caches）和临时文件（tmp）";
+"Delete Library/Caches and tmp for %lu apps, plus Crash Logs" = "删除 %lu 个 App 的缓存（Library/Caches）和临时文件（tmp），并删除崩溃日志";
+"Deleting is turned off" = "删除功能已关闭";
+"Extracted %lu file into %@. %lu symbolic link in the ZIP was left out." = "已将 %lu 个文件解压到 %@。ZIP 中的 %lu 个符号链接已排除。";
+"Extracted %lu file into %@. %lu symbolic links in the ZIP were left out." = "已将 %lu 个文件解压到 %@。ZIP 中的 %lu 个符号链接已排除。";
+"Extracted %lu files into %@. %lu symbolic link in the ZIP was left out." = "已将 %lu 个文件解压到 %@。ZIP 中的 %lu 个符号链接已排除。";
+"Extracted %lu files into %@. %lu symbolic links in the ZIP were left out." = "已将 %lu 个文件解压到 %@。ZIP 中的 %lu 个符号链接已排除。";
+"No %@ container found." = "未找到 %@ 容器。";
+"No %@ containers found." = "未找到 %@ 容器。";
+"No backup" = "没有备份";
+"Restore Backup…" = "还原备份…";
+"Show Item Counts" = "显示项目数量";
+"There is no complete backup of %@ to restore." = "没有可还原的 %@ 完整备份。";
+"This permanently removes %lu complete backup and everything inside it. It cannot be undone." = "这会永久删除 %lu 个完整备份及其中的所有内容，且无法撤销。";
+"This permanently removes %lu complete backups and everything inside them. It cannot be undone." = "这会永久删除 %lu 个完整备份及其中的所有内容，且无法撤销。";
+"Turn on Allow Deleting on the start screen of WQ Files to delete, clear or clean." = "请在 WQ Files 首页开启“允许删除”后，才能删除、清除或清理。";
+"WQ Files needs an App Group to reach other apps' folders, and the tool that signed it removed it. Without it nothing can be opened, and app lists stay empty or show \"NO TOKEN\".\n\nRe-install WQ Files with AltStore, SideStore or Impactor (they create the App Group; Sideloadly doesn't), or with a provisioning profile that contains one. Wildcard certificates (as used by many Feather/ESign setups) can't." = "WQ Files 需要应用组（App Group）才能访问其他应用的文件夹，而签名工具把它移除了。没有它，任何内容都无法打开，应用列表会为空或显示“无令牌”。\n\n请使用 AltStore、SideStore 或 Impactor 重新安装 WQ Files（它们会创建应用组；Sideloadly 不会），或使用包含应用组的描述文件。通配符证书（许多 Feather/ESign 方案使用）无法做到。";

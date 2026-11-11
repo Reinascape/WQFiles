@@ -964,10 +964,10 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
     WQAppItem *app = nil;
     for (WQAppItem *candidate in _apps) if ([candidate.bundleID isEqualToString:bid]) { app = candidate; break; }
     if (!app) {
-        wq_alert(self, @"App not found", [NSString stringWithFormat:@"%@ isn't installed, or WQ Files can't reach its data. "
-                 "A backup can only be restored into the installed app: install it, open it once, then try again.", bid]);
+        wq_alert(self, @"App not found", WQLocalizedFormat(@"%@ isn't installed, or WQ Files can't reach its data. "
+                 "A backup can only be restored into the installed app: install it, open it once, then try again.", bid));
     } else if (!app.backups.count) {
-        wq_alert(self, @"No backup", [NSString stringWithFormat:@"There is no complete backup of %@ to restore.", app.name]);
+        wq_alert(self, @"No backup", WQLocalizedFormat(@"There is no complete backup of %@ to restore.", app.name));
     } else {
         [self pickBackupToRestore:app from:nil];
     }

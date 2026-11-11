@@ -80,12 +80,16 @@ static NSString *WQCacheConfirmationScope(NSArray<WQCacheItem *> *items)
     NSUInteger appCount = 0;
     WQCacheSelectionCategories(items, &hasApps, &hasCrashLogs, &appCount);
     if (hasApps && hasCrashLogs) {
-        return WQLocalizedFormat(@"Delete Library/Caches and tmp for %lu app%@, plus Crash Logs",
-                (unsigned long)appCount, appCount == 1 ? @"" : @"s");
+        return WQLocalizedFormat(appCount == 1
+                ? @"Delete Library/Caches and tmp for %lu app, plus Crash Logs"
+                : @"Delete Library/Caches and tmp for %lu apps, plus Crash Logs",
+                (unsigned long)appCount);
     }
     if (hasApps) {
-        return WQLocalizedFormat(@"Delete Library/Caches and tmp for %lu app%@",
-                (unsigned long)appCount, appCount == 1 ? @"" : @"s");
+        return WQLocalizedFormat(appCount == 1
+                ? @"Delete Library/Caches and tmp for %lu app"
+                : @"Delete Library/Caches and tmp for %lu apps",
+                (unsigned long)appCount);
     }
     if (hasCrashLogs) return WQLocalized(@"Delete Crash Logs");
     return WQLocalized(@"Delete the selected cache targets");
@@ -635,23 +639,32 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
         }];
         NSMutableArray<NSString *> *notes = [NSMutableArray new];
         if (failedEnumerations) {
-            [notes addObject:WQLocalizedFormat(@"%lu container enumeration%@ failed", (unsigned long)failedEnumerations, failedEnumerations == 1 ? @"" : @"s")];
+            [notes addObject:WQLocalizedFormat(failedEnumerations == 1
+                ? @"%lu container enumeration failed" : @"%lu container enumerations failed",
+                (unsigned long)failedEnumerations)];
         }
         if (limitedContainers) {
-            [notes addObject:WQLocalizedFormat(@"%lu container%@ had limited access", (unsigned long)limitedContainers, limitedContainers == 1 ? @"" : @"s")];
+            [notes addObject:WQLocalizedFormat(limitedContainers == 1
+                ? @"%lu container had limited access" : @"%lu containers had limited access",
+                (unsigned long)limitedContainers)];
         }
         if (limitedMeasurements) {
-            [notes addObject:WQLocalizedFormat(@"%lu cache tree measurement%@ was limited", (unsigned long)limitedMeasurements, limitedMeasurements == 1 ? @"" : @"s")];
+            [notes addObject:WQLocalizedFormat(limitedMeasurements == 1
+                ? @"%lu cache tree measurement was limited" : @"%lu cache tree measurements were limited",
+                (unsigned long)limitedMeasurements)];
         }
         if (missingIdentities) {
-            [notes addObject:WQLocalizedFormat(@"%lu container%@ had no identifier or identity", (unsigned long)missingIdentities, missingIdentities == 1 ? @"" : @"s")];
+            [notes addObject:WQLocalizedFormat(missingIdentities == 1
+                ? @"%lu container had no identifier or identity" : @"%lu containers had no identifier or identity",
+                (unsigned long)missingIdentities)];
         }
         NSString *note = nil;
         if (scanLimited) {
             [notes addObject:WQLocalized(@"limited rows are excluded; the remaining rows can still be cleaned")];
             note = WQLocalizedFormat(@"Scan incomplete: %@. See Log.", [notes componentsJoinedByString:@"; "]);
         } else if (emptyRoots.count) {
-            note = WQLocalizedFormat(@"No %@ container%@ found.", [emptyRoots componentsJoinedByString:@" or "], emptyRoots.count == 1 ? @"" : @"s");
+            note = WQLocalizedFormat(emptyRoots.count == 1 ? @"No %@ container found." : @"No %@ containers found.",
+                                     [emptyRoots componentsJoinedByString:@" or "]);
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation != self->_scanGeneration || cancellation.isCancelled) return;
@@ -711,7 +724,8 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
         cell.bar.progress = total ? (float)((double)selected / (double)total) : 0;
         cell.bar.hidden = _scanning && !_items.count;
         cell.statusLabel.text = _status ?: _result
-            ?: WQLocalizedFormat(@"%@ selected in %lu item%@", wq_size_text(selected), (unsigned long)n, n == 1 ? @"" : @"s");
+            ?: WQLocalizedFormat(n == 1 ? @"%@ selected in %lu item" : @"%@ selected in %lu items",
+                                 wq_size_text(selected), (unsigned long)n);
         return cell;
     }
     WQCleanerCell *cell = [tableView dequeueReusableCellWithIdentifier:@"item"]

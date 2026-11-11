@@ -1076,9 +1076,11 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     if (wq_refuse_if_deleting_off(self)) return;
     NSArray<NSString *> *paths = [_selectedBackups.allObjects sortedArrayUsingSelector:@selector(compare:)];
     if (paths.count == 0) return;
-    NSString *message = [NSString stringWithFormat:
-        @"This permanently removes %lu complete backup%@ and everything inside them. It cannot be undone.",
-        (unsigned long)paths.count, paths.count == 1 ? @"" : @"s"];
+    NSString *message = paths.count == 1
+        ? WQLocalizedFormat(@"This permanently removes %lu complete backup and everything inside it. It cannot be undone.",
+                            (unsigned long)paths.count)
+        : WQLocalizedFormat(@"This permanently removes %lu complete backups and everything inside them. It cannot be undone.",
+                            (unsigned long)paths.count);
     UIAlertController *alert = wq_alert_controller(@"Delete backups?", message, UIAlertControllerStyleAlert);
     [alert addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
     [alert addAction:wq_alert_action(@"Delete", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
@@ -1371,8 +1373,11 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         [NSFileManager.defaultManager removeItemAtPath:work error:nil];
         wq_log(@"compress: %lu item(s) -> %@: %@", (unsigned long)paths.count, dest, ok ? @"OK" : *error);
         if (ok && skipped)
-            *note = WQLocalizedFormat(@"Created %@. %lu symbolic link%@ or special file%@ were left out.",
-                     zipName, (unsigned long)skipped, skipped == 1 ? @"" : @"s", skipped == 1 ? @"" : @"s");
+            *note = skipped == 1
+                ? WQLocalizedFormat(@"Created %@. %lu symbolic link or special file was left out.",
+                                    zipName, (unsigned long)skipped)
+                : WQLocalizedFormat(@"Created %@. %lu symbolic links or special files were left out.",
+                                    zipName, (unsigned long)skipped);
         return ok;
     }];
 }
@@ -1405,9 +1410,18 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         [NSFileManager.defaultManager removeItemAtPath:work error:nil];
         wq_log(@"extract: %@ -> %@: %@ (%lu files, %lu skipped)", zipPath, dest, ok ? @"OK" : *error,
                (unsigned long)files, (unsigned long)skipped);
-        if (ok && skipped)
-            *note = WQLocalizedFormat(@"Extracted %lu file%@ into %@. %lu symbolic link%@ in the ZIP were left out.",
-                     (unsigned long)files, files == 1 ? @"" : @"s", folder, (unsigned long)skipped, skipped == 1 ? @"" : @"s");
+        if (ok && skipped) {
+            NSString *key;
+            if (files == 1 && skipped == 1)
+                key = @"Extracted %lu file into %@. %lu symbolic link in the ZIP was left out.";
+            else if (files == 1)
+                key = @"Extracted %lu file into %@. %lu symbolic links in the ZIP were left out.";
+            else if (skipped == 1)
+                key = @"Extracted %lu files into %@. %lu symbolic link in the ZIP was left out.";
+            else
+                key = @"Extracted %lu files into %@. %lu symbolic links in the ZIP were left out.";
+            *note = WQLocalizedFormat(key, (unsigned long)files, folder, (unsigned long)skipped);
+        }
         return ok;
     }];
 }
@@ -2562,7 +2576,7 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     if (indexPath.section == 2) {
         BOOL counts = indexPath.row == 1;
-        c.text = counts ? @"Show Item Counts" : @"Allow Deleting";
+        c.text = counts ? WQLocalizedNullable(@"Show Item Counts") : WQLocalizedNullable(@"Allow Deleting");
         c.image = [UIImage systemImageNamed:counts ? @"number" : @"trash.slash"];
         UISwitch *toggle = [UISwitch new];
         toggle.on = counts ? wq_show_item_counts() : wq_deleting_allowed();

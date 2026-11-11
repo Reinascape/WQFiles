@@ -118,7 +118,6 @@
 "WQ Files does not follow symbolic links for viewing, sharing or editing." = "WQ Files does not follow symbolic links for viewing, sharing or editing.";
 "WQ Files does not follow symbolic links for viewing, sharing or editing. Use Copy Path to open the target explicitly." = "WQ Files does not follow symbolic links for viewing, sharing or editing. Use Copy Path to open the target explicitly.";
 "Symbolic links are not followed for viewing, sharing or editing." = "Symbolic links are not followed for viewing, sharing or editing.";
-"This permanently removes %lu complete backup%@ and everything inside them. It cannot be undone." = "This permanently removes %lu complete backup%@ and everything inside them. It cannot be undone.";
 "Delete backups?" = "Delete backups?";
 "Delete backup?" = "Delete backup?";
 "Delete \"%@\"?" = "Delete \"%@\"?";
@@ -339,8 +338,6 @@
 "Scanning" = "Scanning";
 "Reclaimable" = "Reclaimable";
 "summary" = "summary";
-"Delete Library/Caches and tmp for %lu app%@, plus Crash Logs" = "Delete Library/Caches and tmp for %lu app%@, plus Crash Logs";
-"Delete Library/Caches and tmp for %lu app%@" = "Delete Library/Caches and tmp for %lu app%@";
 "Delete Crash Logs" = "Delete Crash Logs";
 "Delete the selected cache targets" = "Delete the selected cache targets";
 "Clears each selected app's Library/Caches and tmp, and deletes selected Crash Logs. Apps rebuild their caches as you use them; some keep offline content (music, maps, downloads) there and will download it again. No backup is kept." = "Clears each selected app's Library/Caches and tmp, and deletes selected Crash Logs. Apps rebuild their caches as you use them; some keep offline content (music, maps, downloads) there and will download it again. No backup is kept.";
@@ -349,7 +346,6 @@
 "Select app caches or Crash Logs to see the deletion scope. No backup is kept." = "Select app caches or Crash Logs to see the deletion scope. No backup is kept.";
 "Select None" = "Select None";
 "Select Large Caches (50 MB+)" = "Select Large Caches (50 MB+)";
-"No %@ container%@ found." = "No %@ container%@ found.";
 "Scan incomplete: %@. See Log." = "Scan incomplete: %@. See Log.";
 "limited rows are excluded; the remaining rows can still be cleaned" = "limited rows are excluded; the remaining rows can still be cleaned";
 "Crash Logs" = "Crash Logs";
@@ -378,11 +374,6 @@
 " Close running apps first." = " Close running apps first.";
 "%lu of %lu" = "%lu of %lu";
 "%lu apps and extensions" = "%lu apps and extensions";
-"%lu container enumeration%@ failed" = "%lu container enumeration%@ failed";
-"%lu container%@ had limited access" = "%lu container%@ had limited access";
-"%lu cache tree measurement%@ was limited" = "%lu cache tree measurement%@ was limited";
-"%lu container%@ had no identifier or identity" = "%lu container%@ had no identifier or identity";
-"%@ selected in %lu item%@" = "%@ selected in %lu item%@";
 "Share in progress" = "Share in progress";
 "Wait for the current share to finish before starting another." = "Wait for the current share to finish before starting another.";
 "Cannot share" = "Cannot share";
@@ -553,7 +544,6 @@
 " · %@ left" = " · %@ left";
 "the app folders" = "the app folders";
 "Signing problem: no App Group" = "Signing problem: no App Group";
-"WQ Files needs an App Group to reach other apps' folders, and the tool that signed it removed it. Without it nothing can be opened, and app lists stay empty or show \"NO TOKEN\".\n\nRe-install WQ Files with AltStore, SideStore or Sideloadly (they create the App Group), or with a provisioning profile that contains one. Wildcard certificates (as used by many Feather/ESign setups) can't." = "WQ Files needs an App Group to reach other apps' folders, and the tool that signed it removed it. Without it nothing can be opened, and app lists stay empty or show \"NO TOKEN\".\n\nRe-install WQ Files with AltStore, SideStore or Sideloadly (they create the App Group), or with a provisioning profile that contains one. Wildcard certificates (as used by many Feather/ESign setups) can't.";
 "Signing Help" = "Signing Help";
 "WQ Files %@ (%@) by kolbicz" = "WQ Files %@ (%@) by kolbicz";
 "SQLite Viewer" = "SQLite Viewer";
@@ -621,8 +611,6 @@
 "Extracting" = "Extracting";
 "Cannot compress" = "Cannot compress";
 "Cannot extract" = "Cannot extract";
-"Created %@. %lu symbolic link%@ or special file%@ were left out." = "Created %@. %lu symbolic link%@ or special file%@ were left out.";
-"Extracted %lu file%@ into %@. %lu symbolic link%@ in the ZIP were left out." = "Extracted %lu file%@ into %@. %lu symbolic link%@ in the ZIP were left out.";
 "Copying failed." = "Copying failed.";
 "Can't create a temporary folder" = "Can't create a temporary folder";
 "Not a ZIP file" = "Not a ZIP file";
@@ -683,8 +671,6 @@
 "%@ · %@ · container identity unavailable" = "%@ · %@ · container identity unavailable";
 "text" = "text";
 "Home.Button" = "Home.Button";
-"Restore.FileBackup" = "Restore.FileBackup";
-"Restore.AppBackup" = "Restore.AppBackup";
 "Please wait…" = "Please wait…";
 "%@ will be overwritten in place. The current version is backed up to Backups first." = "%@ will be overwritten in place. The current version is backed up to Backups first.";
 "%@, %@" = "%@, %@";
@@ -724,3 +710,42 @@
 "Backup storage cannot be changed through the file browser." = "Backup storage cannot be changed through the file browser.";
 "An item named \"%@\" is already there" = "An item named \"%@\" is already there";
 "Items can't be moved to another volume" = "Items can't be moved to another volume";
+
+/* Plural forms and WQ Files 0.9 localization additions. */
+"%@ isn't installed, or WQ Files can't reach its data. A backup can only be restored into the installed app: install it, open it once, then try again." = "%@ isn't installed, or WQ Files can't reach its data. A backup can only be restored into the installed app: install it, open it once, then try again.";
+"%@ selected in %lu item" = "%@ selected in %lu item";
+"%@ selected in %lu items" = "%@ selected in %lu items";
+"%ld item" = "%ld item";
+"%ld items" = "%ld items";
+"%lu cache tree measurement was limited" = "%lu cache tree measurement was limited";
+"%lu cache tree measurements were limited" = "%lu cache tree measurements were limited";
+"%lu container enumeration failed" = "%lu container enumeration failed";
+"%lu container enumerations failed" = "%lu container enumerations failed";
+"%lu container had limited access" = "%lu container had limited access";
+"%lu container had no identifier or identity" = "%lu container had no identifier or identity";
+"%lu containers had limited access" = "%lu containers had limited access";
+"%lu containers had no identifier or identity" = "%lu containers had no identifier or identity";
+"Allow Deleting" = "Allow Deleting";
+"Allow Deleting: when off, nothing can be deleted: no Delete or swipe to delete in folders and backups, no Clear Data in Apps and no cleaning in the Cache Cleaner. Saving, moving and restoring still work.\n\nShow Item Counts: shows how many items each folder holds. Every subfolder has to be listed for this, which slows down folders with many subfolders, especially in other apps' data." = "Allow Deleting: when off, nothing can be deleted: no Delete or swipe to delete in folders and backups, no Clear Data in Apps and no cleaning in the Cache Cleaner. Saving, moving and restoring still work.\n\nShow Item Counts: shows how many items each folder holds. Every subfolder has to be listed for this, which slows down folders with many subfolders, especially in other apps' data.";
+"App not found" = "App not found";
+"Created %@. %lu symbolic link or special file was left out." = "Created %@. %lu symbolic link or special file was left out.";
+"Created %@. %lu symbolic links or special files were left out." = "Created %@. %lu symbolic links or special files were left out.";
+"Delete Library/Caches and tmp for %lu app" = "Delete Library/Caches and tmp for %lu app";
+"Delete Library/Caches and tmp for %lu app, plus Crash Logs" = "Delete Library/Caches and tmp for %lu app, plus Crash Logs";
+"Delete Library/Caches and tmp for %lu apps" = "Delete Library/Caches and tmp for %lu apps";
+"Delete Library/Caches and tmp for %lu apps, plus Crash Logs" = "Delete Library/Caches and tmp for %lu apps, plus Crash Logs";
+"Deleting is turned off" = "Deleting is turned off";
+"Extracted %lu file into %@. %lu symbolic link in the ZIP was left out." = "Extracted %lu file into %@. %lu symbolic link in the ZIP was left out.";
+"Extracted %lu file into %@. %lu symbolic links in the ZIP were left out." = "Extracted %lu file into %@. %lu symbolic links in the ZIP were left out.";
+"Extracted %lu files into %@. %lu symbolic link in the ZIP was left out." = "Extracted %lu files into %@. %lu symbolic link in the ZIP was left out.";
+"Extracted %lu files into %@. %lu symbolic links in the ZIP were left out." = "Extracted %lu files into %@. %lu symbolic links in the ZIP were left out.";
+"No %@ container found." = "No %@ container found.";
+"No %@ containers found." = "No %@ containers found.";
+"No backup" = "No backup";
+"Restore Backup…" = "Restore Backup…";
+"Show Item Counts" = "Show Item Counts";
+"There is no complete backup of %@ to restore." = "There is no complete backup of %@ to restore.";
+"This permanently removes %lu complete backup and everything inside it. It cannot be undone." = "This permanently removes %lu complete backup and everything inside it. It cannot be undone.";
+"This permanently removes %lu complete backups and everything inside them. It cannot be undone." = "This permanently removes %lu complete backups and everything inside them. It cannot be undone.";
+"Turn on Allow Deleting on the start screen of WQ Files to delete, clear or clean." = "Turn on Allow Deleting on the start screen of WQ Files to delete, clear or clean.";
+"WQ Files needs an App Group to reach other apps' folders, and the tool that signed it removed it. Without it nothing can be opened, and app lists stay empty or show \"NO TOKEN\".\n\nRe-install WQ Files with AltStore, SideStore or Impactor (they create the App Group; Sideloadly doesn't), or with a provisioning profile that contains one. Wildcard certificates (as used by many Feather/ESign setups) can't." = "WQ Files needs an App Group to reach other apps' folders, and the tool that signed it removed it. Without it nothing can be opened, and app lists stay empty or show \"NO TOKEN\".\n\nRe-install WQ Files with AltStore, SideStore or Impactor (they create the App Group; Sideloadly doesn't), or with a provisioning profile that contains one. Wildcard certificates (as used by many Feather/ESign setups) can't.";
