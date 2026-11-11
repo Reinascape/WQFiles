@@ -7,6 +7,7 @@
 #import "WQSharing.h"
 #import "WQUI.h"
 #import "WQAccess.h"
+#import "WQArchive.h"
 #import <objc/runtime.h>
 #import <sys/stat.h>
 
@@ -159,7 +160,7 @@ void wq_share(UIViewController *host, NSString *path, UIView *source)
 
 static NSString *wq_zip_name(NSString *dir);
 
-// Zips a folder (the system's own zipper via NSFileCoordinator) and opens the
+// Zips a folder (WQ Files' own ZIP writer) and opens the
 // share sheet, so a backup can go out over AirDrop, Files, Mail…
 void wq_share_folder(UIViewController *host, NSString *dir, NSString *zipName, UIView *source)
 {
@@ -187,20 +188,23 @@ void wq_share_folder(UIViewController *host, NSString *dir, NSString *zipName, U
         NSString *outDir = wq_unique_export_directory();
         preparation.exportDir = outDir;
         NSString *zip = outDir ? [outDir stringByAppendingPathComponent:[safe stringByAppendingPathExtension:@"zip"]] : nil;
-        NSFileManager *fm = NSFileManager.defaultManager;
+        // WQ Files' own ZIP writer, reading through access tokens. iOS's
+        // folder zipper (NSFileCoordinator) gives up on the whole folder when
+        // one file refuses reading, and every app folder holds a root-only
+        // metadata plist; those files are left out here instead.
         wq_grant(dir);
-        __block NSError *copyError = nil;
-        NSError *coordError = nil;
-        if (zip && !preparation.isCancelled) {
-            [[NSFileCoordinator new] coordinateReadingItemAtURL:[NSURL fileURLWithPath:dir]
-                                                        options:NSFileCoordinatorReadingForUploading
-                                                          error:&coordError byAccessor:^(NSURL *zipped) {
-                if (!preparation.isCancelled) [fm copyItemAtURL:zipped toURL:[NSURL fileURLWithPath:zip] error:&copyError];
-            }];
-        }
-        BOOL ok = zip && !preparation.isCancelled && [fm fileExistsAtPath:zip];
-        NSString *why = (coordError ?: copyError).localizedDescription ?: @"Could not create the ZIP";
-        wq_log(@"share zip: %@ -> %@ %@", dir, zip.lastPathComponent, ok ? @"OK" : why);
+        WQArchiveIO *io = [WQArchiveIO new];
+        io.stat = ^BOOL(NSString *path, struct stat *st) { return wq_stat(path, st); };
+        io.list = ^NSArray<NSString *> *(NSString *path) { return wq_list(path, NULL); };
+        io.openRead = ^int(NSString *path) { return wq_open_for_reading(path); };
+        io.skipUnreadable = YES;
+        NSUInteger skipped = 0;
+        NSString *zipError = nil;
+        BOOL ok = zip && !preparation.isCancelled &&
+            wq_zip_write(@[dir], zip, io, ^BOOL { return preparation.isCancelled; }, nil, &skipped, &zipError);
+        NSString *why = zipError ?: @"Could not create the ZIP";
+        wq_log(@"share zip: %@ -> %@ %@ (%lu unreadable, %lu links or special files left out)", dir, zip.lastPathComponent,
+               ok ? @"OK" : why, (unsigned long)io.unreadable, (unsigned long)skipped);
         dispatch_async(dispatch_get_main_queue(), ^{
             UIViewController *strongHost = preparation.host;
             BOOL hudPresented = strongHost && strongHost.presentedViewController == hud;

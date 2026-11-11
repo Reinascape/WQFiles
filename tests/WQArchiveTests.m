@@ -1,3 +1,4 @@
+#include <sys/stat.h>
 // Host tests for WQArchive: round trips, compatibility with zip/unzip/ditto and
 // Python's zipfile (including ZIP64 records), and refusal of unsafe archives.
 #import <Foundation/Foundation.h>
@@ -207,6 +208,32 @@ int main(void)
         NSString *cut = [work stringByAppendingPathComponent:@"cut.zip"];
         put(cut, [whole subdataWithRange:NSMakeRange(0, whole.length / 2)]);
         CHECK(!wq_zip_extract(cut, tmpdir(@"out8"), io, 1ull << 40, nil, nil, nil, nil, &err));
+
+        // Unreadable files and folders (like a container's root-only metadata
+        // plist): fail the archive by default, left out with skipUnreadable.
+        NSString *locked = [tmpdir(@"locked") stringByAppendingPathComponent:@"Container"];
+        NSString *secret = [locked stringByAppendingPathComponent:@".metadata.plist"];
+        NSString *closed = [locked stringByAppendingPathComponent:@"Closed"];
+        put([locked stringByAppendingPathComponent:@"Documents/save.dat"], [@"progress" dataUsingEncoding:NSUTF8StringEncoding]);
+        put(secret, [@"root only" dataUsingEncoding:NSUTF8StringEncoding]);
+        put([closed stringByAppendingPathComponent:@"inner.txt"], [@"x" dataUsingEncoding:NSUTF8StringEncoding]);
+        chmod(secret.fileSystemRepresentation, 0);
+        chmod(closed.fileSystemRepresentation, 0);
+        NSString *strict = [work stringByAppendingPathComponent:@"strict.zip"];
+        CHECK(!wq_zip_write(@[locked], strict, io, nil, nil, nil, &err), @"unreadable file must fail without skipUnreadable");
+        CHECK(![fm fileExistsAtPath:strict], @"failed ZIP removed");
+        WQArchiveIO *lenient = wq_archive_posix_io();
+        lenient.skipUnreadable = YES;
+        NSString *shareZip = [work stringByAppendingPathComponent:@"share.zip"];
+        CHECK(wq_zip_write(@[locked], shareZip, lenient, nil, nil, nil, &err), @"lenient zip: %@", err);
+        CHECK(lenient.unreadable == 2, @"unreadable %lu", (unsigned long)lenient.unreadable);
+        NSString *shareOut = tmpdir(@"shareout");
+        CHECK(wq_zip_extract(shareZip, shareOut, io, 1ull << 40, nil, nil, nil, nil, &err), @"extract: %@", err);
+        CHECK([[NSData dataWithContentsOfFile:[shareOut stringByAppendingPathComponent:@"Container/Documents/save.dat"]]
+               isEqual:[@"progress" dataUsingEncoding:NSUTF8StringEncoding]], @"readable file kept");
+        CHECK(![fm fileExistsAtPath:[shareOut stringByAppendingPathComponent:@"Container/.metadata.plist"]], @"unreadable file left out");
+        chmod(closed.fileSystemRepresentation, 0755);
+        chmod(secret.fileSystemRepresentation, 0644);
     }
     if (failures) { printf("WQArchiveTests: %d failure(s)\n", failures); return 1; }
     printf("WQArchiveTests: all passed\n");

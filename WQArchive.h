@@ -24,6 +24,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSArray<NSString *> *_Nullable (^list)(NSString *dir);
 // A read-only descriptor for a regular file (not following links), or -1.
 @property (nonatomic, copy) int (^openRead)(NSString *path);
+// Writing: files and folders that refuse reading (permissions, sandbox) are
+// left out instead of failing the whole archive, counted in `unreadable`.
+// Every app folder holds a root-only metadata plist, so sharing a whole
+// container needs this.
+@property (nonatomic) BOOL skipUnreadable;
+@property (nonatomic) NSUInteger unreadable;
 @end
 
 // Plain POSIX calls; for local files and tests.

@@ -160,6 +160,7 @@ static BOOL wq_zip_local_header(WQZipWriter *w, WQZipEntry *e)
 static BOOL wq_zip_add_file(WQZipWriter *w, NSString *path, NSString *name, const struct stat *st)
 {
     int in = w->io.openRead(path);
+    if (in < 0 && w->io.skipUnreadable && (errno == EACCES || errno == EPERM)) { w->io.unreadable++; return YES; }
     if (in < 0) return wq_zip_fail(w, WQLocalizedFormat(@"Can't read %@ (%s)", name, strerror(errno)));
     WQZipEntry *e = [WQZipEntry new];
     e.name = [name dataUsingEncoding:NSUTF8StringEncoding];
@@ -229,6 +230,7 @@ static BOOL wq_zip_add(WQZipWriter *w, NSString *path, NSString *name, NSUIntege
     e.crc = 0;
     if (!wq_zip_local_header(w, e)) return NO;
     NSArray<NSString *> *children = w->io.list(path);
+    if (!children && w->io.skipUnreadable) { w->io.unreadable++; return YES; }   // kept as an empty folder
     if (!children) return wq_zip_fail(w, WQLocalizedFormat(@"Can't list %@", name));
     for (NSString *child in [children sortedArrayUsingSelector:@selector(localizedStandardCompare:)]) {
         if (!wq_zip_add(w, [path stringByAppendingPathComponent:child], [name stringByAppendingFormat:@"/%@", child], depth + 1))
