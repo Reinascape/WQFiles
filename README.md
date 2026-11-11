@@ -25,6 +25,9 @@ follows the device language; Settings → WQ Files → Language picks another).
   shown with the app's name, bundle ID and icon instead of a UUID.
 - **App Groups**: shared group containers.
 - **Extension Data** and **Internal Daemons**.
+- **App Bundles**: each installed app's bundle container
+  (`/var/containers/Bundle/Application`) with its `.app`, labeled with the
+  app's name; also from Apps: long-press an app → **Open App Bundle**.
 - **System Data**: `/var/containers/Data/System` (listing only; its contents
   are owned by root).
 - **System Groups**: the parent cannot be listed on 27.0.1, so known container
@@ -50,7 +53,9 @@ new files.
   `Documents`/`Library` (another device's shared backup, another tool's export)
   into a normal verified backup of that app, ready to restore; data that says
   it belongs to a different app asks first. Show all apps, only Apple's, only others, only backed-up
-  ones, or (iOS 27) only installed or offloaded ones; long-press to copy the bundle ID or container path. `tmp` is intentionally ephemeral: clear removes it, but app
+  ones, or (iOS 27) only installed or offloaded ones; long-press to copy the bundle ID or container path.
+  Apps and the Cache Cleaner keep their list between visits and rescan on
+  their own after 10 minutes; pull down to rescan any time. `tmp` is intentionally ephemeral: clear removes it, but app
   backups do not include it and restore leaves the current `tmp` untouched.
 - **Cache Cleaner**: cache and temp size per app, with search, Select All /
   None / Large Caches (50 MB+) and crash logs. Long-press an app to jump to its

@@ -15,6 +15,7 @@
 "App Groups" = "App Groups";
 "Extension Data" = "بيانات الامتدادات";
 "Internal Daemons" = "الخدمات الداخلية";
+"App Bundles" = "حزم التطبيقات";
 "System Data" = "بيانات النظام";
 "System Groups" = "مجموعات النظام";
 "Apps" = "التطبيقات";
@@ -285,6 +286,7 @@
 "The container identifier is unavailable. Backup, restore and clear are disabled for this entry." = "معرّف الحاوية غير متاح. النسخ الاحتياطي والاستعادة والمسح معطّلة لهذا الإدخال.";
 "Sandbox access is unavailable. Check the App Group and see Log; only the container path can be copied." = "الوصول إلى Sandbox غير متاح. تحقّق من App Group وراجع السجل؛ يمكن نسخ مسار الحاوية فقط.";
 "Open Data Folder" = "فتح مجلد البيانات";
+"Open App Bundle" = "فتح حزمة التطبيق";
 "Copy Container Path" = "نسخ مسار الحاوية";
 "Back Up Data" = "نسخ البيانات احتياطيًا";
 "Share Latest Backup (AirDrop…)" = "مشاركة أحدث نسخة احتياطية (AirDrop…)";

@@ -52,6 +52,7 @@
     NSDictionary<NSString *, NSNumber *> *_indexRows;
     NSString *_restoreBundleID;
     WQAppItem *_importApp;
+    NSTimeInterval _lastScanFinished;
 }
 
 - (instancetype)initRestoringBundleID:(NSString *)bundleID
@@ -522,7 +523,35 @@ static BOOL wq_dir_size_cancellable(NSString *dir, WQScanCancellation *cancellat
 - (void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
-    if (_scanning && _scanCancellation.isCancelled) [self scan];
+    if (_scanning && _scanCancellation.isCancelled) { [self scan]; return; }
+    if (_scanning || !_apps) return;
+    // The start screen keeps this screen between visits: rescan on its own
+    // only when the list is old (pull to refresh rescans any time). Backups
+    // may have been made or deleted elsewhere, so reread those (cheap).
+    if (NSDate.date.timeIntervalSinceReferenceDate - _lastScanFinished > 600.0) { [self scan]; return; }
+    [self refreshBackups];
+}
+
+- (void)refreshBackups
+{
+    NSArray<WQAppItem *> *apps = _apps;
+    NSUInteger generation = _scanGeneration;
+    dispatch_async(wq_io(), ^{
+        NSMutableArray *lists = [NSMutableArray arrayWithCapacity:apps.count];
+        for (WQAppItem *app in apps) [lists addObject:app.bundleID.length ? wq_app_backups(app.bundleID) : @[]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation != self->_scanGeneration || self->_scanning) return;
+            BOOL changed = NO;
+            for (NSUInteger i = 0; i < apps.count; i++) {
+                if ([apps[i].backups isEqualToArray:lists[i]]) continue;
+                apps[i].backups = lists[i];
+                changed = YES;
+            }
+            if (!changed) return;
+            [self rebuildVisibleApps];
+            [self.tableView reloadData];
+        });
+    });
 }
 
 - (void)viewWillDisappear:(BOOL)animated
@@ -693,6 +722,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation != self->_scanGeneration || cancellation.isCancelled) return;
             self->_scanning = NO;
+            self->_lastScanFinished = NSDate.date.timeIntervalSinceReferenceDate;
             self->_apps = apps;
             [self rebuildVisibleApps];
             [self.refreshControl endRefreshing];
@@ -828,6 +858,14 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
             [actions addObject:[UIAction actionWithTitle:WQLocalizedNullable(@"Open Data Folder") image:[UIImage systemImageNamed:@"folder"] identifier:nil
                                                   handler:^(UIAction *__unused a) {
                 [weakSelf.navigationController pushViewController:[[WQDirViewController alloc] initWithPath:app.container title:app.name]
+                                                         animated:YES];
+            }]];
+        }
+        NSString *bundlePath = app.bundleID.length && wq_display_names_loaded() ? wq_bundle_path_for_id(app.bundleID) : nil;
+        if (bundlePath.length) {
+            [actions addObject:[UIAction actionWithTitle:WQLocalizedNullable(@"Open App Bundle") image:[UIImage systemImageNamed:@"app.badge"] identifier:nil
+                                                  handler:^(UIAction *__unused a) {
+                [weakSelf.navigationController pushViewController:[[WQDirViewController alloc] initWithPath:bundlePath title:app.name]
                                                          animated:YES];
             }]];
         }

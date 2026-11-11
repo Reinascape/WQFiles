@@ -1514,8 +1514,17 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         NSString *error = nil;
         NSArray *names = wq_list(path, &error);
         NSArray *childPaths = nil;
+        // App bundles: the app database knows every installed app's bundle
+        // container, so no scan is needed when the folder can't be listed.
+        BOOL bundleRoot = [path isEqualToString:@"/private/var/containers/Bundle/Application"] ||
+                          [path isEqualToString:@"/var/containers/Bundle/Application"];
+        if (!names && bundleRoot && !cancellation.isCancelled) {
+            NSArray *bundles = wq_ls_bundle_containers();
+            if (bundles.count) childPaths = bundles;
+            else wq_log(@"app bundles: can't list %@ (%@) and the app database lists no bundles", path, error ?: @"no reason");
+        }
         // Parent gives no token on 27.x: discover children with fsgetpath.
-        if (!names && enumerable && !cancellation.isCancelled) {
+        if (!names && !childPaths && enumerable && !cancellation.isCancelled) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (generation != self->_scanGeneration || cancellation.isCancelled) return;
                 self->_scanStatus = WQLocalized(@"Scanning inodes…");
@@ -1591,9 +1600,10 @@ static NSString *wq_temp_work_dir(NSString *prefix)
                 item.isDir = YES;
                 BOOL token = wq_grant(item.path);
                 NSString *bid = token ? wq_container_label(item.path) : nil;
+                if (!bid && bundleRoot) bid = wq_bundle_id_for_container(item.path);
                 item.bundleID = bid;
                 if (bid) (void)wq_app_icon(bid);   // warm the icon off the main thread
-                item.label = token ? (wq_display_name(bid) ?: bid ?: WQLocalized(@"(no label)")) : WQLocalized(@"NO TOKEN");
+                item.label = token || bid ? (wq_display_name(bid) ?: bid ?: WQLocalized(@"(no label)")) : WQLocalized(@"NO TOKEN");
                 if (!token && labelIssues < 3) {
                     wq_log(@"label: no token for %@", item.path);
                     labelIssues++;
@@ -2502,6 +2512,17 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
 
 @implementation WQRootViewController {
     NSArray<NSArray<NSString *> *> *_locations;  // title, path, symbol
+    // Kept between visits so Apps and the Cache Cleaner show their last list
+    // right away instead of scanning every container again.
+    WQAppsViewController *_apps;
+    WQCacheCleanerViewController *_cacheCleaner;
+}
+
+- (void)didReceiveMemoryWarning
+{
+    [super didReceiveMemoryWarning];
+    if (!_apps.parentViewController) _apps = nil;
+    if (!_cacheCleaner.parentViewController) _cacheCleaner = nil;
 }
 
 - (instancetype)init
@@ -2513,6 +2534,7 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
             @[@"App Groups", @"/private/var/mobile/Containers/Shared/AppGroup", @"square.stack.3d.up"],
             @[@"Extension Data", @"/private/var/mobile/Containers/Data/PluginKitPlugin", @"puzzlepiece.extension"],
             @[@"Internal Daemons", @"/private/var/mobile/Containers/Data/InternalDaemon", @"gearshape.2"],
+            @[@"App Bundles", @"/private/var/containers/Bundle/Application", @"app.badge"],
         ];
         if (wq_system_areas_reachable())
             _locations = [_locations arrayByAddingObject:@[@"System Data", @"/private/var/containers/Data/System", @"cpu"]];
@@ -2696,9 +2718,11 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
             next = [WQSystemGroupsViewController new];
         }
     } else if (indexPath.row == 0) {
-        next = [WQAppsViewController new];
+        if (!_apps || _apps.parentViewController) _apps = [WQAppsViewController new];
+        next = _apps;
     } else if (indexPath.row == 1) {
-        next = [WQCacheCleanerViewController new];
+        if (!_cacheCleaner || _cacheCleaner.parentViewController) _cacheCleaner = [WQCacheCleanerViewController new];
+        next = _cacheCleaner;
     } else if (indexPath.row == 2) {
         [self goToPath];
         return;

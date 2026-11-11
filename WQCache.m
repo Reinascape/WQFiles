@@ -407,8 +407,10 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
         [self scan];
         return;
     }
+    // The screen is kept between visits: rescan on its own only when the
+    // list is old; pull to refresh rescans any time.
     if (!_scanning && !_cleaning && _lastScanFinished > 0 &&
-        NSDate.date.timeIntervalSinceReferenceDate - _lastScanFinished > 60.0) {
+        NSDate.date.timeIntervalSinceReferenceDate - _lastScanFinished > 600.0) {
         [self scan];
     }
 }

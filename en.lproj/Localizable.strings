@@ -15,6 +15,7 @@
 "App Groups" = "App Groups";
 "Extension Data" = "Extension Data";
 "Internal Daemons" = "Internal Daemons";
+"App Bundles" = "App Bundles";
 "System Data" = "System Data";
 "System Groups" = "System Groups";
 "Apps" = "Apps";
@@ -285,6 +286,7 @@
 "The container identifier is unavailable. Backup, restore and clear are disabled for this entry." = "The container identifier is unavailable. Backup, restore and clear are disabled for this entry.";
 "Sandbox access is unavailable. Check the App Group and see Log; only the container path can be copied." = "Sandbox access is unavailable. Check the App Group and see Log; only the container path can be copied.";
 "Open Data Folder" = "Open Data Folder";
+"Open App Bundle" = "Open App Bundle";
 "Copy Container Path" = "Copy Container Path";
 "Back Up Data" = "Back Up Data";
 "Share Latest Backup (AirDrop…)" = "Share Latest Backup (AirDrop…)";
