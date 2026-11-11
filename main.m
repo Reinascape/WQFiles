@@ -220,6 +220,9 @@ static UIColor *wq_syntax_color(WQSyntaxKind kind)
     _textView = [UITextView new];
     _textView.translatesAutoresizingMaskIntoConstraints = NO;
     _textView.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
+    // File contents stay left-to-right in right-to-left languages, like code editors.
+    _textView.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
+    _textView.textAlignment = NSTextAlignmentLeft;
     _textView.editable = NO;
     _textView.autocorrectionType = UITextAutocorrectionTypeNo;
     _textView.autocapitalizationType = UITextAutocapitalizationTypeNone;
@@ -957,6 +960,8 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         _pathLabel = [UILabel new];
         _pathLabel.numberOfLines = 0;
         _pathLabel.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
+        _pathLabel.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
+        _pathLabel.textAlignment = NSTextAlignmentLeft;   // paths read left to right in every language
         _pathLabel.textColor = UIColor.secondaryLabelColor;
         _pathLabel.userInteractionEnabled = YES;
         [_pathLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(copyPath)]];
@@ -2402,6 +2407,8 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
     _textView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _textView.editable = NO;
     _textView.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
+    _textView.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
+    _textView.textAlignment = NSTextAlignmentLeft;   // log lines stay left to right
     [self.view addSubview:_textView];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction
                                                                                            target:self action:@selector(share:)];

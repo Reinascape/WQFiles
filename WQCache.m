@@ -282,7 +282,9 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
         _detailLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
         _sizeLabel = [UILabel new];
         _sizeLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];
-        _sizeLabel.textAlignment = NSTextAlignmentRight;
+        // Trailing edge in both layout directions.
+        _sizeLabel.textAlignment = [UIView userInterfaceLayoutDirectionForSemanticContentAttribute:self.semanticContentAttribute]
+            == UIUserInterfaceLayoutDirectionRightToLeft ? NSTextAlignmentLeft : NSTextAlignmentRight;
         for (UIView *v in @[_checkView, _iconView, _nameLabel, _detailLabel, _sizeLabel]) {
             v.translatesAutoresizingMaskIntoConstraints = NO;
             [self.contentView addSubview:v];

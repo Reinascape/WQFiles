@@ -436,6 +436,8 @@ static NSString *wq_sqlite_csv_field(sqlite3_stmt *stmt, int column)
     _textView = [UITextView new];
     _textView.translatesAutoresizingMaskIntoConstraints = NO;
     _textView.font = [UIFont monospacedSystemFontOfSize:15 weight:UIFontWeightRegular];
+    _textView.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;   // SQL stays left to right
+    _textView.textAlignment = NSTextAlignmentLeft;
     _textView.autocapitalizationType = UITextAutocapitalizationTypeNone;
     _textView.autocorrectionType = UITextAutocorrectionTypeNo;
     _textView.smartQuotesType = UITextSmartQuotesTypeNo;

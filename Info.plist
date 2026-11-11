@@ -40,6 +40,8 @@
 	<array>
 		<string>en</string>
 		<string>zh-Hans</string>
+		<string>de</string>
+		<string>ar</string>
 	</array>
 	<key>CFBundleName</key>
 	<string>WQFiles</string>
