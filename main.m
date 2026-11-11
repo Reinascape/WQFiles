@@ -2932,7 +2932,13 @@ static NSString *wq_language_name(NSString *code)
     if (checked) return;
     checked = YES;
     _checkingAccess = YES;
-    [self.tableView reloadData];
+    // A spinner in the bar while it runs: unlike a text row, it doesn't move
+    // the list when it goes away.
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithFrame:CGRectZero];
+    [spinner sizeToFit];
+    [spinner startAnimating];
+    spinner.accessibilityLabel = WQLocalized(@"Checking access…");
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:spinner];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSArray<WQHealthCheck *> *checks = wq_health_run(nil);
         dispatch_async(dispatch_get_main_queue(), ^{ [self healthCheckFinished:checks]; });
@@ -2942,6 +2948,7 @@ static NSString *wq_language_name(NSString *code)
 - (void)healthCheckFinished:(NSArray<WQHealthCheck *> *)checks
 {
     _checkingAccess = NO;
+    self.navigationItem.rightBarButtonItem = nil;
     [self rebuildLocations];   // App Bundles depends on the result
     [self.tableView reloadData];
     WQHealthState worst = wq_health_worst(checks);
@@ -3047,8 +3054,6 @@ static NSString *wq_language_name(NSString *code)
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section
 {
-    if (section == 0 && _checkingAccess)
-        return WQLocalized(@"Checking access…");
     if (section == 0 && !wq_system_areas_reachable())
         return WQLocalized(@"On iOS 26, System Data and System Groups can't be reached (worse_query covers them on iOS 27 only), and Internal Daemons need a scan of every file id: the first one can take most of an hour on a well-used device, later ones only check new files.");
     if (section == 2)
