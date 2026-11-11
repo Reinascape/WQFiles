@@ -23,6 +23,7 @@ typedef NS_ENUM(NSInteger, WQHealthState) {
 
 @interface WQHealthCheck : NSObject
 @property (nonatomic, copy) NSString *title;
+@property (nonatomic, copy) NSString *key;          // English name, for the Log
 @property (nonatomic, copy) NSString *detail;
 @property (nonatomic) WQHealthState state;
 @end
@@ -30,6 +31,10 @@ typedef NS_ENUM(NSInteger, WQHealthState) {
 // Runs every check (blocking; call off the main thread). `stage` gets a short
 // description of the step in progress (any thread).
 NSArray<WQHealthCheck *> *wq_health_run(void (^_Nullable stage)(NSString *text));
+
+// Whether app bundle folders (/var/containers/Bundle/Application/...) open
+// on this device, as found by the last wq_health_run. NO until it ran.
+BOOL wq_app_bundles_reachable(void);
 
 // The worst state among the checks.
 WQHealthState wq_health_worst(NSArray<WQHealthCheck *> *checks);

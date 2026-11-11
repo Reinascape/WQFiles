@@ -10,6 +10,7 @@
 #import "WQSharing.h"
 #import "WQAccess.h"
 #import "WQLaunchServices.h"
+#import "WQHealth.h"
 #import "WQCore.h"
 #import "WQAppsSupport.h"
 #import "WQArchive.h"
@@ -93,45 +94,32 @@ static WQInstallState wq_app_install_state(NSString *bundleID, NSString **why)
         return WQInstallInstalled;
     }
     NSString *plistPath = [path stringByAppendingPathComponent:@"Info.plist"];
+    // Installed apps' bundles refuse reading (iOS 26 and 27.0.1), while an
+    // offloaded app's placeholder bundle can be read. A plain read first (no
+    // Log line); a token only while tokens for bundles have ever helped.
+    NSError *plainError = nil;
+    NSData *data = [NSData dataWithContentsOfFile:plistPath options:0 error:&plainError];
+    int plainErrno = (int)[plainError.userInfo[NSUnderlyingErrorKey] code];
+    static NSInteger tokenAttempts, tokenSuccesses;
+    BOOL tryToken = NO;
+    @synchronized ([WQAppItem class]) { tryToken = !data && (tokenSuccesses > 0 || tokenAttempts < 3); }
     NSString *readError = nil;
-    // iOS 26 refuses every app bundle: after a few refusals in a row (and no
-    // success) stop trying, so the Log doesn't get a line per app.
-    static NSUInteger refusedInARow;
-    static BOOL anyRead;
-    @synchronized ([WQAppItem class]) {
-        if (!anyRead && refusedInARow >= 3) {
-            *why = @"Info.plist unreadable: this iOS refuses app bundles";
-            return WQInstallUnknown;
-        }
-    }
-    NSData *data = wq_read(plistPath, 4 * 1024 * 1024, &readError);
-    // The token may have to be for the bundle container (the .app's parent)
-    // rather than for the .app itself.
-    if (!data && (wq_grant(path.stringByDeletingLastPathComponent) || wq_grant(path)))
-        data = wq_read(plistPath, 4 * 1024 * 1024, &readError);
-    @synchronized ([WQAppItem class]) {
-        if (data) { anyRead = YES; refusedInARow = 0; }
-        else if ([readError containsString:@"not permitted"]) refusedInARow++;
+    if (tryToken) {
+        data = (wq_grant(path.stringByDeletingLastPathComponent) || wq_grant(path)) ? wq_read(plistPath, 4 * 1024 * 1024, &readError) : nil;
+        @synchronized ([WQAppItem class]) { tokenAttempts++; if (data) tokenSuccesses++; }
     }
     id info = data ? [NSPropertyListSerialization propertyListWithData:data options:0 format:NULL error:nil] : nil;
     if (![info isKindOfClass:NSDictionary.class]) {
         struct stat st;
         BOOL bundleThere = lstat(path.fileSystemRepresentation, &st) == 0;
-        *why = [NSString stringWithFormat:@"%@: %@ (%@)", data ? @"Info.plist not a dictionary" : @"Info.plist unreadable",
-                plistPath, data ? @"bad plist" : (readError ?: @"no reason")];
-        if (!data && !bundleThere) *why = [*why stringByAppendingString:@", bundle not visible"];
-        // What an unreadable bundle still shows, to find a sign of offloading
-        // that doesn't need Info.plist.
-        if (!data && bundleThere) {
-            NSMutableArray *seen = [NSMutableArray new];
-            for (NSString *part in @[@"Info.plist", @"_CodeSignature", @"SC_Info", @"embedded.mobileprovision", @"Frameworks", @"PlugIns"]) {
-                struct stat ps;
-                BOOL there = lstat([path stringByAppendingPathComponent:part].fileSystemRepresentation, &ps) == 0;
-                [seen addObject:[NSString stringWithFormat:@"%@%@", there ? @"+" : @"-", part]];
-            }
-            *why = [*why stringByAppendingFormat:@"; %@ guessed program %@ missing; %@", path.lastPathComponent,
-                    guess.lastPathComponent, [seen componentsJoinedByString:@" "]];
+        BOOL denied = plainErrno == EPERM || plainErrno == EACCES || plainError.code == NSFileReadNoPermissionError;
+        if (!data && bundleThere && denied) {
+            *why = [NSString stringWithFormat:@"refused: %@ can't be read", path.lastPathComponent];
+            return WQInstallUnknown;
         }
+        *why = [NSString stringWithFormat:@"%@: %@ (%@)", data ? @"Info.plist not a dictionary" : @"Info.plist unreadable",
+                plistPath, data ? @"bad plist" : (readError ?: plainError.localizedDescription ?: @"no reason")];
+        if (!data && !bundleThere) *why = [*why stringByAppendingString:@", bundle not visible"];
         return WQInstallUnknown;
     }
     NSString *executable = [info[@"CFBundleExecutable"] isKindOfClass:NSString.class] ? info[@"CFBundleExecutable"] : nil;
@@ -697,6 +685,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         NSUInteger i = 0, missingLabels = 0, limited = 0, sizeLimited = 0;
         NSUInteger installCounts[3] = {0}, installNotes = 0;
         NSMutableDictionary<NSString *, NSNumber *> *installReasons = [NSMutableDictionary new];
+        NSMutableArray<WQAppItem *> *refusedBundles = [NSMutableArray new];
         for (NSString *c in containers) {
             if (cancellation.isCancelled) { WQAppScanStep(nil); return; }
             i++;
@@ -747,6 +736,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
             app.installState = bid.length ? wq_app_install_state(bid, &why) : WQInstallUnknown;
             installCounts[app.installState]++;
             NSString *reasonKind = [why componentsSeparatedByString:@":"].firstObject ?: @"no identifier";
+            if ([reasonKind isEqualToString:@"refused"]) [refusedBundles addObject:app];
             installReasons[reasonKind] = @([installReasons[reasonKind] unsignedIntegerValue] + 1);
             // Every offloaded app (there are few, and they're the claim to check),
             // and a few of the unknown ones.
@@ -758,6 +748,16 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         }
         WQAppScanStep(nil);
         if (cancellation.isCancelled) return;
+        // Offloaded apps' placeholder bundles can be read while installed
+        // apps' bundles refuse: once a placeholder was read on this device, a
+        // refused bundle is an installed app.
+        if (installCounts[WQInstallOffloaded] && refusedBundles.count) {
+            for (WQAppItem *app in refusedBundles) app.installState = WQInstallInstalled;
+            installCounts[WQInstallInstalled] += refusedBundles.count;
+            installCounts[WQInstallUnknown] -= refusedBundles.count;
+            wq_log(@"install state: %lu refused bundles counted as installed (offloaded placeholders are readable here)",
+                   (unsigned long)refusedBundles.count);
+        }
         wq_log(@"app scan: %lu apps measured in %.1f s", (unsigned long)apps.count, CFAbsoluteTimeGetCurrent() - scanStarted);
         wq_log(@"app scan: %lu installed, %lu offloaded, %lu unknown", (unsigned long)installCounts[WQInstallInstalled],
                (unsigned long)installCounts[WQInstallOffloaded], (unsigned long)installCounts[WQInstallUnknown]);
@@ -922,8 +922,8 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
                                                          animated:YES];
             }]];
         }
-        // iOS 26 gives no access to bundle containers (no token).
-        NSString *bundlePath = app.bundleID.length && wq_system_areas_reachable() && wq_display_names_loaded()
+        // Only where bundle containers open (see the startup check).
+        NSString *bundlePath = app.bundleID.length && wq_app_bundles_reachable() && wq_display_names_loaded()
             ? wq_bundle_path_for_id(app.bundleID) : nil;
         if (bundlePath.length) {
             [actions addObject:[UIAction actionWithTitle:WQLocalizedNullable(@"Open App Bundle") image:[UIImage systemImageNamed:@"app.badge"] identifier:nil

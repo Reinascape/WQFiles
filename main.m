@@ -2875,11 +2875,12 @@ static NSString *wq_language_name(NSString *code)
             @[@"Extension Data", @"/private/var/mobile/Containers/Data/PluginKitPlugin", @"puzzlepiece.extension"],
             @[@"Internal Daemons", @"/private/var/mobile/Containers/Data/InternalDaemon", @"gearshape.2"],
         ];
-        // iOS 26 gives no access to the bundle containers (no token).
+        // Bundle containers open on some iOS versions only (found by the
+        // startup check); System Data on iOS 27.
+        if (wq_app_bundles_reachable())
+            _locations = [_locations arrayByAddingObject:@[@"App Bundles", @"/private/var/containers/Bundle/Application", @"app.badge"]];
         if (wq_system_areas_reachable())
-            _locations = [_locations arrayByAddingObjectsFromArray:@[
-                @[@"App Bundles", @"/private/var/containers/Bundle/Application", @"app.badge"],
-                @[@"System Data", @"/private/var/containers/Data/System", @"cpu"]]];
+            _locations = [_locations arrayByAddingObject:@[@"System Data", @"/private/var/containers/Data/System", @"cpu"]];
     }
     return self;
 }

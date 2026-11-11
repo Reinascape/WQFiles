@@ -17,10 +17,14 @@ static WQHealthCheck *wq_check(NSString *title, WQHealthState state, NSString *d
 {
     WQHealthCheck *c = [WQHealthCheck new];
     c.title = WQLocalized(title);
+    c.key = title;
     c.state = state;
     c.detail = detail ?: @"";
     return c;
 }
+
+static BOOL gBundlesReachable;
+BOOL wq_app_bundles_reachable(void) { return gBundlesReachable; }
 
 WQHealthState wq_health_worst(NSArray<WQHealthCheck *> *checks)
 {
@@ -116,13 +120,26 @@ NSArray<WQHealthCheck *> *wq_health_run(void (^stage)(NSString *))
         : names == WQHealthOK ? WQLocalizedFormat(@"%lu of %lu sampled folders identified.", (unsigned long)labeled, (unsigned long)sample.count)
         : WQLocalizedFormat(@"The app database can't be read properly on iOS %@ (%lu of %lu sampled folders identified). Apps show folder IDs instead of names; backups and restores need the right app, so check before restoring.", osText, (unsigned long)labeled, (unsigned long)sample.count))];
 
+    // App bundles open on some iOS versions only (not on 26 or 27.0.1):
+    // App Bundles and Open App Bundle are shown when one does.
+    BOOL bundles = NO;
+    if (access == WQHealthOK) {
+        NSArray<NSString *> *all = wq_ls_bundle_containers();
+        for (NSUInteger i = 0; i < all.count && i < 3 && !bundles; i++) {
+            NSString *b = all[i * all.count / 3];
+            bundles = wq_grant(b) && wq_list(b, NULL) != nil;
+        }
+        wq_log(@"health: app bundle folders %@", bundles ? @"open" : @"don't open (App Bundles hidden)");
+    }
+    gBundlesReachable = bundles;
+
     // 5. iOS version.
     BOOL tested = os.majorVersion == 26 || os.majorVersion == 27;
     [checks addObject:wq_check(@"iOS version", tested ? WQHealthOK : WQHealthWarning,
         tested ? osText : WQLocalizedFormat(@"iOS %@ hasn't been tested with this version of WQ Files.", osText))];
 
     NSMutableArray *summary = [NSMutableArray new];
-    for (WQHealthCheck *c in checks) [summary addObject:[NSString stringWithFormat:@"%@=%@", c.title,
+    for (WQHealthCheck *c in checks) [summary addObject:[NSString stringWithFormat:@"%@=%@", c.key,
         @[@"ok", @"skipped", @"warning", @"FAILED"][(NSUInteger)c.state]]];
     wq_log(@"health: iOS %@: %@", osText, [summary componentsJoinedByString:@", "]);
     return checks;

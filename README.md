@@ -28,8 +28,9 @@ Settings picks another, used from the next start.
 - **Extension Data** and **Internal Daemons**.
 - **App Bundles**: each installed app's bundle container
   (`/var/containers/Bundle/Application`) with its `.app`, labeled with the
-  app's name; also from Apps: long-press an app → **Open App Bundle**
-  (iOS 27; iOS 26 doesn't give access to these folders).
+  app's name; also from Apps: long-press an app → **Open App Bundle**. Shown
+  only where iOS lets WQ Files open these folders (the startup check tries;
+  iOS 26 and 27.0.1 don't).
 - **System Data**: `/var/containers/Data/System` (listing only; its contents
   are owned by root).
 - **System Groups**: the parent cannot be listed on 27.0.1, so known container
