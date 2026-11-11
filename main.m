@@ -2754,7 +2754,10 @@ static NSString *wq_chosen_language(void)
 static NSString *wq_language_name(NSString *code)
 {
     if (!code.length) return WQLocalized(@"System Default");
-    NSString *name = [[NSLocale localeWithLocaleIdentifier:code] localizedStringForLanguageCode:code];
+    // A regional table (pt-BR) is named with its region: "Português (Brasil)".
+    NSLocale *own = [NSLocale localeWithLocaleIdentifier:code];
+    NSString *name = [code containsString:@"-"] && ![code isEqualToString:@"zh-Hans"]
+        ? [own localizedStringForLocaleIdentifier:code] : [own localizedStringForLanguageCode:code];
     if ([code isEqualToString:@"zh-Hans"]) name = @"简体中文";
     return name.length ? [[name substringToIndex:1].uppercaseString stringByAppendingString:[name substringFromIndex:1]] : code;
 }
@@ -2816,7 +2819,9 @@ static NSString *wq_language_name(NSString *code)
     // Like iOS: each language in its own name, and in the one shown now.
     NSString *shownLanguage = NSBundle.mainBundle.preferredLocalizations.firstObject ?: @"en";
     if (code.length) {
-        NSString *here = [[NSLocale localeWithLocaleIdentifier:shownLanguage] localizedStringForLanguageCode:code];
+        NSLocale *shown = [NSLocale localeWithLocaleIdentifier:shownLanguage];
+        NSString *here = [code containsString:@"-"] && ![code isEqualToString:@"zh-Hans"]
+            ? [shown localizedStringForLocaleIdentifier:code] : [shown localizedStringForLanguageCode:code];
         if (here.length && [here localizedCaseInsensitiveCompare:c.text] != NSOrderedSame) c.secondaryText = here;
     } else {
         NSString *device = [NSLocale preferredLanguages].firstObject;

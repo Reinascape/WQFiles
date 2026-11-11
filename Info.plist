@@ -45,6 +45,7 @@
 		<string>it</string>
 		<string>es</string>
 		<string>ko</string>
+		<string>pt-BR</string>
 	</array>
 	<key>CFBundleName</key>
 	<string>WQFiles</string>
@@ -57,7 +58,7 @@
 		<string>iPhoneOS</string>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>60</string>
+	<string>61</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

@@ -16,8 +16,8 @@ app data, the Cache Cleaner and the file browser work as on iOS 27. App icons
 don't: iOS 26 hands WQ Files only placeholder icons and doesn't let it read
 other apps' bundles, so apps show symbol tiles.
 
-WQ Files is available in English, German, Italian, Spanish, Korean, Arabic
-and Simplified Chinese. It follows the device language; **Language** in WQ Files'
+WQ Files is available in English, German, Italian, Spanish, Portuguese
+(Brazil), Korean, Arabic and Simplified Chinese. It follows the device language; **Language** in WQ Files'
 Settings picks another, used from the next start.
 
 ## What it opens
@@ -256,14 +256,14 @@ concurrent writes still require supported-device validation.
 
 ## Translations
 
-WQ Files is in English, German, Italian, Spanish, Korean, Arabic and
-Simplified Chinese. New languages and corrections are welcome as pull requests:
+WQ Files is in English, German, Italian, Spanish, Portuguese (Brazil), Korean,
+Arabic and Simplified Chinese. New languages and corrections are welcome as pull requests:
 
 - **Correct a translation:** edit the line in `<language>.lproj/Localizable.strings`
   (for example `it.lproj`). The English text on the left is the key; change
   only the text on the right.
 - **Add a language:** copy `en.lproj` to a folder named with the language code
-  (`fr.lproj`, `pt-BR.lproj`…), translate the right-hand side, and add the code
+  (`fr.lproj`, `pt-PT.lproj`…), translate the right-hand side, and add the code
   to `CFBundleLocalizations` in `Info.plist` and to `LANGUAGES` in
   `tests/test_localization.py`. The language then appears in WQ Files'
   Language setting by itself.
@@ -271,7 +271,7 @@ Simplified Chinese. New languages and corrections are welcome as pull requests:
   English text, and leave paths, file names and `WQ Files` as they are.
   `python3 -m unittest tests.test_localization` checks this.
 
-German, Italian and Spanish, and the newest Chinese, Arabic and Korean strings, are
+German, Italian, Spanish and Portuguese, and the newest Chinese, Arabic and Korean strings, are
 machine translations so far: corrections from native speakers are especially
 welcome.
 
