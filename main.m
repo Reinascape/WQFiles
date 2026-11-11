@@ -2534,10 +2534,12 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
             @[@"App Groups", @"/private/var/mobile/Containers/Shared/AppGroup", @"square.stack.3d.up"],
             @[@"Extension Data", @"/private/var/mobile/Containers/Data/PluginKitPlugin", @"puzzlepiece.extension"],
             @[@"Internal Daemons", @"/private/var/mobile/Containers/Data/InternalDaemon", @"gearshape.2"],
-            @[@"App Bundles", @"/private/var/containers/Bundle/Application", @"app.badge"],
         ];
+        // iOS 26 gives no access to the bundle containers (no token).
         if (wq_system_areas_reachable())
-            _locations = [_locations arrayByAddingObject:@[@"System Data", @"/private/var/containers/Data/System", @"cpu"]];
+            _locations = [_locations arrayByAddingObjectsFromArray:@[
+                @[@"App Bundles", @"/private/var/containers/Bundle/Application", @"app.badge"],
+                @[@"System Data", @"/private/var/containers/Data/System", @"cpu"]]];
     }
     return self;
 }

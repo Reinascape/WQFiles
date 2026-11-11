@@ -82,6 +82,16 @@ static WQInstallState wq_app_install_state(NSString *bundleID, NSString **why)
         *why = @"built-in: system volume";
         return WQInstallInstalled;
     }
+    // Checking whether a path exists works even where reading is refused
+    // (iOS 26): the program is almost always named like the bundle
+    // (Drive.app/Drive), so finding it there settles "installed" without
+    // Info.plist.
+    struct stat guessed;
+    NSString *guess = [path stringByAppendingPathComponent:path.lastPathComponent.stringByDeletingPathExtension];
+    if (lstat(guess.fileSystemRepresentation, &guessed) == 0 && S_ISREG(guessed.st_mode)) {
+        *why = @"installed: executable present";
+        return WQInstallInstalled;
+    }
     NSString *plistPath = [path stringByAppendingPathComponent:@"Info.plist"];
     NSString *readError = nil;
     NSData *data = wq_read(plistPath, 4 * 1024 * 1024, &readError);
@@ -96,6 +106,18 @@ static WQInstallState wq_app_install_state(NSString *bundleID, NSString **why)
         *why = [NSString stringWithFormat:@"%@: %@ (%@)", data ? @"Info.plist not a dictionary" : @"Info.plist unreadable",
                 plistPath, data ? @"bad plist" : (readError ?: @"no reason")];
         if (!data && !bundleThere) *why = [*why stringByAppendingString:@", bundle not visible"];
+        // What an unreadable bundle still shows, to find a sign of offloading
+        // that doesn't need Info.plist.
+        if (!data && bundleThere) {
+            NSMutableArray *seen = [NSMutableArray new];
+            for (NSString *part in @[@"Info.plist", @"_CodeSignature", @"SC_Info", @"embedded.mobileprovision", @"Frameworks", @"PlugIns"]) {
+                struct stat ps;
+                BOOL there = lstat([path stringByAppendingPathComponent:part].fileSystemRepresentation, &ps) == 0;
+                [seen addObject:[NSString stringWithFormat:@"%@%@", there ? @"+" : @"-", part]];
+            }
+            *why = [*why stringByAppendingFormat:@"; %@ guessed program %@ missing; %@", path.lastPathComponent,
+                    guess.lastPathComponent, [seen componentsJoinedByString:@" "]];
+        }
         return WQInstallUnknown;
     }
     NSString *executable = [info[@"CFBundleExecutable"] isKindOfClass:NSString.class] ? info[@"CFBundleExecutable"] : nil;
@@ -833,8 +855,12 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
                             WQLocalized(@"Installed"), WQLocalized(@"Offloaded")];
         // Installed/Offloaded only where bundles could be checked (not on iOS 26).
         WQAppsViewController *strongSelf = weakSelf;
-        BOOL installKnown = NO;
-        for (WQAppItem *app in strongSelf ? strongSelf->_apps : @[]) if (app.installState != WQInstallUnknown) { installKnown = YES; break; }
+        // Only offer Installed/Offloaded when nearly every app's state is
+        // known; otherwise those filters would quietly hide the unknown ones.
+        NSArray<WQAppItem *> *all = strongSelf ? strongSelf->_apps : @[];
+        NSUInteger unknown = 0;
+        for (WQAppItem *app in all) if (app.installState == WQInstallUnknown) unknown++;
+        BOOL installKnown = all.count > 0 && unknown * 10 <= all.count;
         NSMutableArray *filters = [NSMutableArray new];
         for (NSInteger i = 0; i < (NSInteger)titles.count; i++) {
             if (i >= 4 && !installKnown && i != current) continue;
@@ -882,7 +908,9 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
                                                          animated:YES];
             }]];
         }
-        NSString *bundlePath = app.bundleID.length && wq_display_names_loaded() ? wq_bundle_path_for_id(app.bundleID) : nil;
+        // iOS 26 gives no access to bundle containers (no token).
+        NSString *bundlePath = app.bundleID.length && wq_system_areas_reachable() && wq_display_names_loaded()
+            ? wq_bundle_path_for_id(app.bundleID) : nil;
         if (bundlePath.length) {
             [actions addObject:[UIAction actionWithTitle:WQLocalizedNullable(@"Open App Bundle") image:[UIImage systemImageNamed:@"app.badge"] identifier:nil
                                                   handler:^(UIAction *__unused a) {
