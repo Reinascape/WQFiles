@@ -380,6 +380,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
     NSUInteger _scanGeneration;
     NSTimeInterval _lastScanFinished;
     float _scanProgress;   // 0…1 while scanning
+    unsigned long long _scanBytes;   // found so far while scanning
 }
 
 - (instancetype)init { return [super initWithStyle:UITableViewStyleInsetGrouped]; }
@@ -516,6 +517,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
     NSUInteger generation = ++_scanGeneration;
     _scanning = YES;
     _scanProgress = 0;
+    _scanBytes = 0;
     _scanLimited = NO;
     _cleanRequiresRescan = NO;
     _result = nil;
@@ -529,6 +531,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
         NSUInteger limitedContainers = 0;
         NSUInteger limitedMeasurements = 0;
         NSUInteger missingIdentities = 0;
+        __block unsigned long long foundBytes = 0;
         NSArray *roots = @[@"/private/var/mobile/Containers/Data/Application",
                            @"/private/var/mobile/Containers/Data/PluginKitPlugin"];
         for (NSString *root in roots) {
@@ -562,8 +565,10 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
                 if (cancellation.isCancelled) return;
                 idx++;
                 if (idx % 10 == 0 || idx == containers.count) {
+                    unsigned long long soFar = foundBytes;
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (generation != self->_scanGeneration || cancellation.isCancelled) return;
+                        self->_scanBytes = soFar;
                         [self setStatus:WQLocalizedFormat(@"Measuring %@ %lu of %lu…", kind,
                                          (unsigned long)idx, (unsigned long)containers.count)
                                progress:base + share * (0.1f + 0.9f * (float)idx / (float)containers.count)];
@@ -598,6 +603,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
                 }
                 BOOL cacheKnown = cacheState != WQCacheMeasurementLimited;
                 BOOL tempKnown = tempState != WQCacheMeasurementLimited;
+                foundBytes += cacheBytes + tempBytes;
                 if (cacheKnown && tempKnown && cacheBytes + tempBytes < 64 * 1024) continue;
                 WQCacheItem *item = [WQCacheItem new];
                 NSString *bid = granted ? wq_container_label(c) : nil;
@@ -743,7 +749,8 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
         BOOL busy = _scanning || _cleaning;
         cell.captionLabel.text = busy ? (_cleaning ? WQLocalized(@"Cleaning") : WQLocalized(@"Scanning")) : WQLocalized(@"Reclaimable");
         if (busy) [cell.spinner startAnimating]; else [cell.spinner stopAnimating];
-        cell.totalLabel.text = (_scanning && !_items.count) ? @"–" : wq_size_text(total);
+        // While the first scan runs, the total found so far counts up.
+        cell.totalLabel.text = wq_size_text((_scanning && !_items.count) ? _scanBytes : total);
         cell.bar.progress = _scanning ? _scanProgress : total ? (float)((double)selected / (double)total) : 0;
         cell.bar.hidden = NO;
         cell.statusLabel.text = _status ?: _result
