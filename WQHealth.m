@@ -60,6 +60,44 @@ static NSArray<NSString *> *wq_health_sample(NSArray<NSString *> *containers, NS
     return picked;
 }
 
+// Diagnostics only (Log): whether iOS's rendered icon cache opens, and what
+// its files look like. iOS 26+ hands this app only the placeholder icon and
+// app bundles don't open, so this cache is the remaining source of icons.
+static void wq_health_probe_icon_cache(void)
+{
+    NSArray<NSString *> *roots = @[
+        @"/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.lsd.iconscache/Library/Caches/com.apple.IconsCache",
+        @"/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.lsd.iconscache/Library/Caches",
+        @"/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.lsd.iconscache",
+        @"/private/var/mobile/Library/Caches/com.apple.IconsCache",
+    ];
+    for (NSString *root in roots) {
+        NSString *error = nil;
+        BOOL granted = wq_grant(root);
+        NSArray<NSString *> *names = wq_list(root, &error);
+        if (!names) {
+            wq_log(@"icon cache: %@: %@ (token %@)", root, error ?: @"can't list", granted ? @"yes" : @"no");
+            continue;
+        }
+        NSArray *sorted = [names sortedArrayUsingSelector:@selector(compare:)];
+        wq_log(@"icon cache: %@: %lu entries, token %@: %@", root, (unsigned long)names.count, granted ? @"yes" : @"no",
+               [[sorted subarrayWithRange:NSMakeRange(0, MIN(sorted.count, (NSUInteger)12))] componentsJoinedByString:@", "]);
+        NSUInteger shown = 0;
+        for (NSString *name in sorted) {
+            if (shown >= 4) break;
+            NSString *path = [root stringByAppendingPathComponent:name];
+            struct stat st;
+            if (!wq_stat(path, &st) || !S_ISREG(st.st_mode)) continue;
+            NSData *head = wq_read_range(path, 0, 32, NULL);
+            NSMutableString *hex = [NSMutableString new];
+            const uint8_t *b = head.bytes;
+            for (NSUInteger i = 0; i < head.length; i++) [hex appendFormat:@"%02x", b[i]];
+            wq_log(@"icon cache: %@: %lld bytes, starts %@", name, (long long)st.st_size, hex.length ? hex : @"(unreadable)");
+            shown++;
+        }
+    }
+}
+
 NSArray<WQHealthCheck *> *wq_health_run(void (^stage)(NSString *))
 {
     NSMutableArray<WQHealthCheck *> *checks = [NSMutableArray new];
@@ -132,6 +170,8 @@ NSArray<WQHealthCheck *> *wq_health_run(void (^stage)(NSString *))
         wq_log(@"health: app bundle folders %@", bundles ? @"open" : @"don't open (App Bundles hidden)");
     }
     gBundlesReachable = bundles;
+    static dispatch_once_t iconProbe;
+    if (access == WQHealthOK && !bundles) dispatch_once(&iconProbe, ^{ wq_health_probe_icon_cache(); });
 
     // 5. iOS version.
     BOOL tested = os.majorVersion == 26 || os.majorVersion == 27;

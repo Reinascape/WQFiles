@@ -108,6 +108,15 @@ static void TestRefreshAndUnicodeSafety(NSString *path)
     WriteData(StoreWithName(@"Cafe\u0301 日本 \u202Eevil"), path);
     WQCheck([wq_display_name(@"com.example.international") isEqualToString:@"Café 日本 �evil"]);
 
+    // Invisible marks are dropped (WhatsApp's name starts with U+200E),
+    // reordering controls only wrapped around the whole name too.
+    WriteData(StoreWithName(@"\u200EWA Business"), path);
+    WQCheck([wq_display_name(@"com.example.international") isEqualToString:@"WA Business"]);
+    WriteData(StoreWithName(@"\u202B\u0648\u0627\u062A\u0633\u0627\u0628\u202C"), path);
+    WQCheck([wq_display_name(@"com.example.international") isEqualToString:@"\u0648\u0627\u062A\u0633\u0627\u0628"]);
+    WriteData(StoreWithName(@"Mail\u200D\U0001F468\u200B"), path);
+    WQCheck([wq_display_name(@"com.example.international") isEqualToString:@"Mail\u200D\U0001F468"]);
+
     WriteData(StoreWithTruncatedDisplayName(), path);
     WQCheck(wq_display_name(@"com.example.international") == nil);
 

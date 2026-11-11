@@ -215,21 +215,30 @@ static BOOL wq_looks_like_bundle_id(NSString *s)
         && [s rangeOfCharacterFromSet:bad].location == NSNotFound;
 }
 
-// Unicode format characters include bidi overrides/isolates, zero-width
-// characters, and BOM-like markers. They are replaced visibly while ordinary
-// international letters, accents, and scripts remain unchanged.
-static BOOL wq_is_name_format_scalar(uint32_t c)
+// Unicode format characters in app names. Controls that reorder text (bidi
+// embeddings, overrides, isolates) could disguise a name, so inside a name
+// they are replaced visibly; wrapped around the whole name they are harmless
+// and dropped. Invisible marks (LRM/RLM, zero-width space, BOM, soft hyphen
+// ...) are dropped: WhatsApp's name starts with U+200E. Zero-width joiners
+// stay, Indic and Persian text and emoji need them.
+static BOOL wq_is_name_reordering_scalar(uint32_t c)
+{
+    return (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069);
+}
+
+static BOOL wq_is_name_invisible_scalar(uint32_t c)
 {
     return c == 0x00ad || (c >= 0x0600 && c <= 0x0605) || c == 0x061c || c == 0x06dd ||
         c == 0x070f || (c >= 0x0890 && c <= 0x0891) || c == 0x08e2 || c == 0x180e ||
-        (c >= 0x200b && c <= 0x200f) || (c >= 0x202a && c <= 0x202e) ||
-        (c >= 0x2060 && c <= 0x206f) || c == 0xfeff;
+        c == 0x200b || c == 0x200e || c == 0x200f || (c >= 0x2060 && c <= 0x2064) ||
+        (c >= 0x206a && c <= 0x206f) || c == 0xfeff;
 }
 
 static NSString *wq_safe_name(NSString *value)
 {
     if (!value.length) return nil;
-    NSMutableString *safe = [NSMutableString stringWithCapacity:value.length];
+    // Scalars first, so leading and trailing reordering controls can be found.
+    NSMutableArray<NSNumber *> *scalars = [NSMutableArray arrayWithCapacity:value.length];
     for (NSUInteger i = 0; i < value.length;) {
         uint32_t scalar = [value characterAtIndex:i++];
         if (scalar >= 0xd800 && scalar <= 0xdbff) {
@@ -240,8 +249,17 @@ static NSString *wq_safe_name(NSString *value)
         } else if (scalar >= 0xdc00 && scalar <= 0xdfff) {
             return nil;
         }
+        if (wq_is_name_invisible_scalar(scalar)) continue;
+        [scalars addObject:@(scalar)];
+    }
+    NSUInteger first = 0, end = scalars.count;
+    while (first < end && wq_is_name_reordering_scalar(scalars[first].unsignedIntValue)) first++;
+    while (end > first && wq_is_name_reordering_scalar(scalars[end - 1].unsignedIntValue)) end--;
 
-        if (wq_is_name_format_scalar(scalar) || scalar == 0x2028 || scalar == 0x2029) {
+    NSMutableString *safe = [NSMutableString stringWithCapacity:value.length];
+    for (NSUInteger i = first; i < end; i++) {
+        uint32_t scalar = scalars[i].unsignedIntValue;
+        if (wq_is_name_reordering_scalar(scalar) || scalar == 0x2028 || scalar == 0x2029) {
             [safe appendString:@"\uFFFD"];
         } else if (scalar <= 0xffff) {
             [safe appendFormat:@"%C", (unichar)scalar];
@@ -255,7 +273,16 @@ static NSString *wq_safe_name(NSString *value)
     NSString *normalized = [safe precomposedStringWithCanonicalMapping];
     normalized = [normalized stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (!normalized.length || [normalized hasPrefix:@"/"] || [normalized containsString:@".app/"]) return nil;
-    if ([normalized rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound) return nil;
+    // Real control characters only (C0, DEL, C1): controlCharacterSet also
+    // holds format characters, which would refuse names with a zero-width joiner.
+    static NSCharacterSet *controls;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSMutableCharacterSet *set = [NSMutableCharacterSet characterSetWithRange:NSMakeRange(0, 0x20)];
+        [set addCharactersInRange:NSMakeRange(0x7f, 0x21)];
+        controls = [set copy];
+    });
+    if ([normalized rangeOfCharacterFromSet:controls].location != NSNotFound) return nil;
     return normalized;
 }
 
