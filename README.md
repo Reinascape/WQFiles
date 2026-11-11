@@ -74,7 +74,9 @@ new files.
     copy of the database and its `-wal` file, so the app's own files are never
     changed; close the app first for an up-to-date copy.
   - **Media player**: audio and video (mp3, m4a, wav, mp4, mov…) play in the
-    system player. The file is copied to WQ Files' temporary folder first.
+    system player. WQ Files streams the file to the player itself, so playback
+    starts right away; formats that can't stream this way (or a stream that
+    fails) are copied to WQ Files' temporary folder first.
   - **Text and images**: text is editable, images render, plists can also be
     edited as XML text. Code and data files get syntax colors (XML/plist,
     JSON, YAML, INI/TOML, CSS, SQL, Markdown, C/Objective-C, Swift,

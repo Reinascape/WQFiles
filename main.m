@@ -26,6 +26,7 @@
 #import "WQSQLiteViewer.h"
 #import "WQArchive.h"
 #import "WQSyntax.h"
+#import "WQMediaStream.h"
 #import <AVKit/AVKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <sys/mount.h>
@@ -536,15 +537,10 @@ static BOOL wq_is_media_name(NSString *name)
     return [exts containsObject:name.pathExtension.lowercaseString];
 }
 
-// The system player decodes in a separate process that can't read other
-// apps' folders, so the file is copied to WQ Files' temporary folder first
-// (the previous copy is removed).
-static void wq_open_media(UINavigationController *nav, NSString *path, BOOL (^stillWanted)(void))
+// Copies the file to WQ Files' temporary folder (the previous copy is
+// removed) and calls back on the main queue with the local URL or an error.
+static void wq_media_copy(NSString *path, void (^done)(NSURL *_Nullable local, NSString *_Nullable error))
 {
-    UIViewController *host = nav.topViewController;
-    UIAlertController *hud = [UIAlertController alertControllerWithTitle:@"Preparing…" message:path.lastPathComponent
-                                                          preferredStyle:UIAlertControllerStyleAlert];
-    [host presentViewController:hud animated:YES completion:nil];
     dispatch_async(wq_io(), ^{
         NSString *dir = [NSTemporaryDirectory() stringByAppendingPathComponent:@"wq-media"];
         NSFileManager *fm = NSFileManager.defaultManager;
@@ -553,20 +549,73 @@ static void wq_open_media(UINavigationController *nav, NSString *path, BOOL (^st
         NSString *local = [dir stringByAppendingPathComponent:path.lastPathComponent];
         NSString *error = nil;
         BOOL ok = wq_copy_to_local(path, local, &error);
-        wq_log(@"media: %@ -> %@", path, ok ? @"OK" : error);
+        wq_log(@"media: copy %@ -> %@", path.lastPathComponent, ok ? @"OK" : error);
         dispatch_async(dispatch_get_main_queue(), ^{
-            void (^show)(void) = ^{
-                if (!ok) { wq_alert(host, @"Cannot play", error ?: @"The file could not be read."); return; }
-                if (!stillWanted()) return;
-                [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryPlayback error:nil];
-                AVPlayerViewController *player = [AVPlayerViewController new];
-                player.player = [AVPlayer playerWithURL:[NSURL fileURLWithPath:local]];
-                player.title = path.lastPathComponent;
-                [nav pushViewController:player animated:YES];
-                [player.player play];
+            done(ok ? [NSURL fileURLWithPath:local] : nil, ok ? nil : (error ?: @"The file could not be read."));
+        });
+    });
+}
+
+// Plays audio and video. It streams the file through WQ Files (the media
+// process can't read other apps' folders itself), so playback starts at once
+// and seeking reads only what's needed. Types that can't stream that way, and
+// files whose stream fails, are copied to the temporary folder and played
+// from there.
+static void wq_open_media(UINavigationController *nav, NSString *path, BOOL (^stillWanted)(void))
+{
+    UIViewController *host = nav.topViewController;
+    dispatch_async(wq_io(), ^{
+        struct stat st;
+        BOOL regular = wq_stat(path, &st) && S_ISREG(st.st_mode);
+        unsigned long long size = regular ? (unsigned long long)st.st_size : 0;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!stillWanted()) return;
+            [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryPlayback error:nil];
+            AVPlayerViewController *player = [AVPlayerViewController new];
+            player.title = path.lastPathComponent;
+            __weak AVPlayerViewController *weakPlayer = player;
+            // Fallback: copy, then swap the copy into the same player.
+            void (^playCopy)(NSString *) = ^(NSString *why) {
+                wq_log(@"media: %@: %@; copying it first", path.lastPathComponent, why);
+                AVPlayerViewController *p = weakPlayer;
+                if (p && !p.player) p.player = [AVPlayer new];
+                UIAlertController *hud = [UIAlertController alertControllerWithTitle:@"Preparing…"
+                    message:path.lastPathComponent preferredStyle:UIAlertControllerStyleAlert];
+                UIViewController *presenter = p.viewIfLoaded.window ? p : host;
+                [presenter presentViewController:hud animated:YES completion:nil];
+                wq_media_copy(path, ^(NSURL *local, NSString *error) {
+                    void (^finish)(void) = ^{
+                        AVPlayerViewController *q = weakPlayer;
+                        if (!local) {
+                            wq_alert(q.viewIfLoaded.window ? q : host, @"Cannot play", error);
+                            return;
+                        }
+                        if (!q) return;
+                        [q.player replaceCurrentItemWithPlayerItem:[AVPlayerItem playerItemWithURL:local]];
+                        [q.player play];
+                    };
+                    if (presenter.presentedViewController == hud) [presenter dismissViewControllerAnimated:YES completion:finish];
+                    else finish();
+                });
             };
-            if (host.presentedViewController == hud) [host dismissViewControllerAnimated:YES completion:show];
-            else show();
+            AVPlayerItem *item = nil;
+            if (regular) {
+                item = [WQMediaStream playerItemForName:path.lastPathComponent size:size
+                    read:^NSData *(unsigned long long offset, NSUInteger length, NSString **error) {
+                        return wq_read_range(path, offset, length, error);
+                    } onFailure:^(NSString *reason) {
+                        if (weakPlayer) playCopy([@"streaming failed: " stringByAppendingString:reason]);
+                    }];
+            }
+            [nav pushViewController:player animated:YES];
+            if (item) {
+                wq_log(@"media: streaming %@ (%@, %@)", path.lastPathComponent,
+                       [WQMediaStream contentTypeForFileName:path.lastPathComponent], wq_size_text(size));
+                player.player = [AVPlayer playerWithPlayerItem:item];
+                [player.player play];
+            } else {
+                playCopy(regular ? @"type can't be streamed" : @"not a regular file or not readable");
+            }
         });
     });
 }
