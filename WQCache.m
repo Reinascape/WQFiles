@@ -379,6 +379,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
     WQScanCancellation *_cleanCancellation;
     NSUInteger _scanGeneration;
     NSTimeInterval _lastScanFinished;
+    float _scanProgress;   // 0…1 while scanning
 }
 
 - (instancetype)init { return [super initWithStyle:UITableViewStyleInsetGrouped]; }
@@ -448,6 +449,14 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
     [self updateButtons];
 }
 
+// While scanning, the bar shows how far the scan is; otherwise how much of
+// the reclaimable space is selected.
+- (void)setStatus:(NSString *)status progress:(float)progress
+{
+    _scanProgress = MAX(_scanProgress, MIN(1.0f, progress));
+    [self setStatus:status];
+}
+
 - (void)setStatus:(NSString *)status
 {
     _status = status;
@@ -506,6 +515,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
     _scanCancellation = cancellation;
     NSUInteger generation = ++_scanGeneration;
     _scanning = YES;
+    _scanProgress = 0;
     _scanLimited = NO;
     _cleanRequiresRescan = NO;
     _result = nil;
@@ -523,11 +533,13 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
                            @"/private/var/mobile/Containers/Data/PluginKitPlugin"];
         for (NSString *root in roots) {
             if (cancellation.isCancelled) return;
+            float share = 1.0f / (float)roots.count, base = (float)[roots indexOfObject:root] * share;
             NSString *kind = [root.lastPathComponent isEqualToString:@"Application"] ? @"apps" : @"extensions";
             NSArray *containers = wq_enumerate(root, 0, cancellation, ^(int64_t done, int64_t total, NSUInteger __unused f) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     if (generation != self->_scanGeneration || cancellation.isCancelled) return;
-                    [self setStatus:WQLocalizedFormat(@"Finding %@… %lld%%", kind, (long long)(done * 100 / total))];
+                    [self setStatus:WQLocalizedFormat(@"Finding %@… %lld%%", kind, (long long)(done * 100 / total))
+                           progress:base + share * 0.1f * (total ? (float)done / (float)total : 0)];
                 });
             });
             if (!containers) {
@@ -553,7 +565,8 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (generation != self->_scanGeneration || cancellation.isCancelled) return;
                         [self setStatus:WQLocalizedFormat(@"Measuring %@ %lu of %lu…", kind,
-                                         (unsigned long)idx, (unsigned long)containers.count)];
+                                         (unsigned long)idx, (unsigned long)containers.count)
+                               progress:base + share * (0.1f + 0.9f * (float)idx / (float)containers.count)];
                     });
                 }
                 BOOL safeContainer = WQCacheSafetyHasNoSymlinkAncestry(c, NO);
@@ -731,8 +744,8 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
         cell.captionLabel.text = busy ? (_cleaning ? WQLocalized(@"Cleaning") : WQLocalized(@"Scanning")) : WQLocalized(@"Reclaimable");
         if (busy) [cell.spinner startAnimating]; else [cell.spinner stopAnimating];
         cell.totalLabel.text = (_scanning && !_items.count) ? @"–" : wq_size_text(total);
-        cell.bar.progress = total ? (float)((double)selected / (double)total) : 0;
-        cell.bar.hidden = _scanning && !_items.count;
+        cell.bar.progress = _scanning ? _scanProgress : total ? (float)((double)selected / (double)total) : 0;
+        cell.bar.hidden = NO;
         cell.statusLabel.text = _status ?: _result
             ?: WQLocalizedFormat(n == 1 ? @"%@ selected in %lu item" : @"%@ selected in %lu items",
                                  wq_size_text(selected), (unsigned long)n);
