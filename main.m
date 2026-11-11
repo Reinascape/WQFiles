@@ -2544,9 +2544,17 @@ static NSString *wq_language_name(NSString *code)
 {
     if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
         self.title = WQLocalized(@"Language");
+        // localizations can name a language twice (the .lproj folder and the
+        // CFBundleLocalizations entry, sometimes spelled differently): one
+        // row per language.
         NSMutableArray *codes = [NSMutableArray new];
-        for (NSString *code in NSBundle.mainBundle.localizations)
-            if (![code isEqualToString:@"Base"]) [codes addObject:code];
+        NSMutableSet *seen = [NSMutableSet new];
+        for (NSString *code in NSBundle.mainBundle.localizations) {
+            NSString *canonical = [NSLocale canonicalLanguageIdentifierFromString:code];
+            if ([code isEqualToString:@"Base"] || [seen containsObject:canonical]) continue;
+            [seen addObject:canonical];
+            [codes addObject:code];
+        }
         [codes sortUsingComparator:^NSComparisonResult(NSString *x, NSString *y) {
             return [wq_language_name(x) localizedCaseInsensitiveCompare:wq_language_name(y)];
         }];
