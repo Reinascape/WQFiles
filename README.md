@@ -16,8 +16,8 @@ app data, the Cache Cleaner and the file browser work as on iOS 27. App icons
 don't: iOS 26 hands WQ Files only placeholder icons and doesn't let it read
 other apps' bundles, so apps show symbol tiles.
 
-WQ Files is available in English, German, Italian, Spanish, Arabic and
-Simplified Chinese. It follows the device language; **Language** in WQ Files'
+WQ Files is available in English, German, Italian, Spanish, Korean, Arabic
+and Simplified Chinese. It follows the device language; **Language** in WQ Files'
 Settings picks another, used from the next start.
 
 ## What it opens
@@ -82,10 +82,16 @@ new files.
   - **Hex viewer and editor**: any file size (read in pages), go to offset,
     find hex bytes or text, overwrite bytes in place. Changed bytes are
     highlighted until saved; the file size never changes.
-  - **SQLite viewer** (read-only): tables and views with row counts, rows,
-    single rows in full, read-only SQL queries and CSV export. It works on a
-    copy of the database and its `-wal` file, so the app's own files are never
-    changed; close the app first for an up-to-date copy.
+  - **SQLite viewer and editor**: tables and views with row counts, rows,
+    single rows in full, SQL queries and CSV export. It works on a copy of the
+    database and its `-wal` file; close the app first for an up-to-date copy.
+    **Edit** changes that copy: tap a value in a row to change it, swipe a row
+    to delete it, or run any SQL. **Save** writes the copy back to the app:
+    force-quit the app first (WQ Files can't tell whether it's running). Before
+    writing, WQ Files checks the copy with SQLite's integrity check and refuses
+    if the app changed the database since it was opened; the previous
+    database goes to Backups, and the app's old `-wal`/`-shm` are emptied so
+    SQLite doesn't replay them over the new file.
   - **Media player**: audio and video (mp3, m4a, wav, mp4, mov…) play in the
     system player. WQ Files streams the file to the player itself, so playback
     starts right away; formats that can't stream this way (or a stream that
@@ -237,8 +243,8 @@ concurrent writes still require supported-device validation.
 
 ## Translations
 
-WQ Files is in English, German, Italian, Spanish, Arabic and Simplified
-Chinese. New languages and corrections are welcome as pull requests:
+WQ Files is in English, German, Italian, Spanish, Korean, Arabic and
+Simplified Chinese. New languages and corrections are welcome as pull requests:
 
 - **Correct a translation:** edit the line in `<language>.lproj/Localizable.strings`
   (for example `it.lproj`). The English text on the left is the key; change
@@ -252,7 +258,7 @@ Chinese. New languages and corrections are welcome as pull requests:
   English text, and leave paths, file names and `WQ Files` as they are.
   `python3 -m unittest tests.test_localization` checks this.
 
-German, Italian and Spanish, and the newest Chinese and Arabic strings, are
+German, Italian and Spanish, and the newest Chinese, Arabic and Korean strings, are
 machine translations so far: corrections from native speakers are especially
 welcome.
 
@@ -266,5 +272,7 @@ welcome.
   ([#38](https://github.com/kolbicz/WQFiles/pull/38)).
 - Arabic translation: [hfip](https://github.com/hfip)
   ([#39](https://github.com/kolbicz/WQFiles/issues/39)).
+- Korean translation: [hooray804](https://github.com/hooray804)
+  ([#40](https://github.com/kolbicz/WQFiles/pull/40)).
 
 WQ Files is GPL-3.0-or-later (see `LICENSE`).

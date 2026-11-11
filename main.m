@@ -644,7 +644,7 @@ static void wq_open_file(UINavigationController *nav, NSString *path, BOOL readO
         } else if (m == WQOpenHex) {
             vc = [[WQHexViewController alloc] initWithPath:path readOnly:readOnly];
         } else if (m == WQOpenSQLite) {
-            vc = [[WQSQLiteViewController alloc] initWithPath:path];
+            vc = [[WQSQLiteViewController alloc] initWithPath:path readOnly:readOnly];
         } else {
             WQFileViewController *file = [[WQFileViewController alloc] initWithPath:path];
             file.readOnly = readOnly;
