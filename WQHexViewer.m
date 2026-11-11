@@ -30,9 +30,8 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
         if (presented && ![presented isKindOfClass:UIAlertController.class]) return;
         void (^present)(void) = ^{
             if (!wqh_is_visible(host) || host.presentedViewController) return;
-            UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:message
-                                                                 preferredStyle:UIAlertControllerStyleAlert];
-            [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            UIAlertController *a = wq_alert_controller(title, message, UIAlertControllerStyleAlert);
+            [a addAction:wq_alert_action(@"OK", UIAlertActionStyleDefault, nil)];
             [host presentViewController:a animated:YES completion:nil];
         };
         if (presented) [presented dismissViewControllerAnimated:YES completion:present];
@@ -95,7 +94,7 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
             self->_size = ok ? (unsigned long long)st.st_size : 0;
             [self layoutColumns];
             if (wq_permission_hint(path, YES)) self->_readOnly = YES;
-            self->_status = ok ? nil : @"Cannot open this file.";
+            self->_status = ok ? nil : WQLocalized(@"Cannot open this file.");
             [self updateBar];
             [self.tableView reloadData];
         });
@@ -146,27 +145,27 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
 - (void)updateBar
 {
     NSString *size = [NSByteCountFormatter stringFromByteCount:(long long)_size countStyle:NSByteCountFormatterCountStyleFile];
-    NSString *prompt = _status ?: [NSString stringWithFormat:@"%@ · %llu bytes%@%@", size, _size,
-                                   _edits.count ? [NSString stringWithFormat:@" · %lu changed", (unsigned long)_edits.count] : @"",
-                                   _editState.saving ? @" · Saving…" : @""];
+    NSString *prompt = _status ?: WQLocalizedFormat(@"%@ · %llu bytes%@%@", size, _size,
+                                   _edits.count ? WQLocalizedFormat(@" · %lu changed", (unsigned long)_edits.count) : @"",
+                                   _editState.saving ? WQLocalized(@" · Saving…") : @"");
     self.navigationItem.prompt = prompt;
     NSMutableArray *items = [NSMutableArray array];
     if (!_readOnly) {
-        UIBarButtonItem *save = [[UIBarButtonItem alloc] initWithTitle:@"Save" style:wq_primary_button_style()
+        UIBarButtonItem *save = [[UIBarButtonItem alloc] initWithTitle:WQLocalizedNullable(@"Save") style:wq_primary_button_style()
                                                                 target:self action:@selector(save)];
         save.enabled = _edits.count > 0 && !_editState.saving;
         [items addObject:save];
     }
     __weak typeof(self) weakSelf = self;
-    UIAction *discard = [UIAction actionWithTitle:@"Discard Changes" image:[UIImage systemImageNamed:@"arrow.uturn.backward"] identifier:nil
+    UIAction *discard = [UIAction actionWithTitle:WQLocalizedNullable(@"Discard Changes") image:[UIImage systemImageNamed:@"arrow.uturn.backward"] identifier:nil
                                       handler:^(UIAction *__unused a) { [weakSelf discard]; }];
     if (_editState.saving) discard.attributes = UIMenuElementAttributesDisabled;
     UIMenu *menu = [UIMenu menuWithChildren:@[
-        [UIAction actionWithTitle:@"Go to Offset…" image:[UIImage systemImageNamed:@"arrow.right.to.line"] identifier:nil
+        [UIAction actionWithTitle:WQLocalizedNullable(@"Go to Offset…") image:[UIImage systemImageNamed:@"arrow.right.to.line"] identifier:nil
                           handler:^(UIAction *__unused a) { [weakSelf goToOffset]; }],
-        [UIAction actionWithTitle:@"Find Hex Bytes…" image:[UIImage systemImageNamed:@"magnifyingglass"] identifier:nil
+        [UIAction actionWithTitle:WQLocalizedNullable(@"Find Hex Bytes…") image:[UIImage systemImageNamed:@"magnifyingglass"] identifier:nil
                           handler:^(UIAction *__unused a) { [weakSelf promptFindHex:YES]; }],
-        [UIAction actionWithTitle:@"Find Text…" image:[UIImage systemImageNamed:@"text.magnifyingglass"] identifier:nil
+        [UIAction actionWithTitle:WQLocalizedNullable(@"Find Text…") image:[UIImage systemImageNamed:@"text.magnifyingglass"] identifier:nil
                           handler:^(UIAction *__unused a) { [weakSelf promptFindHex:NO]; }],
         discard,
     ]];
@@ -205,7 +204,7 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
         dispatch_async(dispatch_get_main_queue(), ^{
             [self->_loading removeObject:page];
             if (!data) {
-                self->_status = wq_permission_hint(path, NO) ? @"Only the owner may read this file." : [NSString stringWithFormat:@"Read failed: %@", error];
+                self->_status = wq_permission_hint(path, NO) ? WQLocalized(@"Only the owner may read this file.") : WQLocalizedFormat(@"Read failed: %@", error);
                 [self updateBar];
                 return;
             }
@@ -277,20 +276,18 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
         if (b < 0) return;   // page not loaded yet
         [current appendFormat:i ? @" %02x" : @"%02x", b];
     }
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Bytes at 0x%llx", start]
-        message:[NSString stringWithFormat:@"Overwrite these %lu bytes (hex). The file size stays the same.", (unsigned long)count]
-        preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *a = wq_alert_controller(WQLocalizedFormat(@"Bytes at 0x%llx", start), WQLocalizedFormat(@"Overwrite these %lu bytes (hex). The file size stays the same.", (unsigned long)count), UIAlertControllerStyleAlert);
     [a addTextFieldWithConfigurationHandler:^(UITextField *f) {
         f.text = current;
         f.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
         f.autocapitalizationType = UITextAutocapitalizationTypeNone;
         f.autocorrectionType = UITextAutocorrectionTypeNo;
     }];
-    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"Set" style:UIAlertActionStyleDefault handler:^(UIAlertAction *__unused x) {
+    [a addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
+    [a addAction:wq_alert_action(@"Set", UIAlertActionStyleDefault, ^(UIAlertAction *__unused x) {
         NSData *bytes = WQParseHex(a.textFields.firstObject.text ?: @"", NO);
         if (bytes.length != count) {
-            wqh_alert(self, @"Not changed", [NSString stringWithFormat:@"Enter exactly %lu bytes in hex.", (unsigned long)count]);
+            wqh_alert(self, @"Not changed", WQLocalizedFormat(@"Enter exactly %lu bytes in hex.", (unsigned long)count));
             return;
         }
         const uint8_t *nb = bytes.bytes;
@@ -302,7 +299,7 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
         [self->_editState noteChange];
         [self updateBar];
         [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
-    }]];
+    })];
     [self presentViewController:a animated:YES completion:nil];
 }
 
@@ -346,12 +343,9 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
         return;
     }
     NSDictionary *runs = [self runs];
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Save changes?"
-        message:[NSString stringWithFormat:@"%lu bytes in %@ are overwritten in place. The current file is backed up first.",
-                 (unsigned long)_edits.count, _path]
-        preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *__unused x) {
+    UIAlertController *a = wq_alert_controller(@"Save changes?", WQLocalizedFormat(@"%lu bytes in %@ are overwritten in place. The current file is backed up first.", (unsigned long)_edits.count, _path), UIAlertControllerStyleAlert);
+    [a addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
+    [a addAction:wq_alert_action(@"Save", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused x) {
         NSDictionary *expectedVersion = [self->_version copy];
         if (!expectedVersion) {
             wqh_alert(self, @"Save unavailable", @"The file version could not be verified. Close and reopen it before saving.");
@@ -379,7 +373,7 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
                 [self.tableView reloadData];
             });
         });
-    }]];
+    })];
     [self presentViewController:a animated:YES completion:nil];
 }
 
@@ -397,14 +391,13 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
 {
     if ([self blockWhileSaving]) return;
     if (!_edits.count) { proceed(); return; }
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Discard changes?"
-        message:@"Your byte changes have not been saved." preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"Keep Editing" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"Discard" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *__unused x) {
+    UIAlertController *a = wq_alert_controller(@"Discard changes?", @"Your byte changes have not been saved.", UIAlertControllerStyleAlert);
+    [a addAction:wq_alert_action(@"Keep Editing", UIAlertActionStyleCancel, nil)];
+    [a addAction:wq_alert_action(@"Discard", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused x) {
         [self->_edits removeAllObjects];
         [self->_editState discard];
         proceed();
-    }]];
+    })];
     [self presentViewController:a animated:YES completion:nil];
 }
 
@@ -428,15 +421,14 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
 
 - (void)goToOffset
 {
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Go to Offset"
-        message:@"Hex (0x1a2b) or decimal" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *a = wq_alert_controller(@"Go to Offset", @"Hex (0x1a2b) or decimal", UIAlertControllerStyleAlert);
     [a addTextFieldWithConfigurationHandler:^(UITextField *f) {
         f.placeholder = @"0x0";
         f.autocapitalizationType = UITextAutocapitalizationTypeNone;
         f.autocorrectionType = UITextAutocorrectionTypeNo;
     }];
-    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"Go" style:UIAlertActionStyleDefault handler:^(UIAlertAction *__unused x) {
+    [a addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
+    [a addAction:wq_alert_action(@"Go", UIAlertActionStyleDefault, ^(UIAlertAction *__unused x) {
         NSString *t = [a.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
         unsigned long long off = 0;
         if (!WQHexParseOffset(t, &off)) {
@@ -448,25 +440,24 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
             return;
         }
         if (off >= _size) {
-            wqh_alert(self, @"Offset out of range", [NSString stringWithFormat:@"Enter an offset from 0x0 through 0x%llx.", _size - 1]);
+            wqh_alert(self, @"Offset out of range", WQLocalizedFormat(@"Enter an offset from 0x0 through 0x%llx.", _size - 1));
             return;
         }
         [self scrollToOffset:off];
-    }]];
+    })];
     [self presentViewController:a animated:YES completion:nil];
 }
 
 - (void)promptFindHex:(BOOL)hex
 {
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:hex ? @"Find Hex Bytes" : @"Find Text"
-        message:@"Searches the saved file forward from the top of the screen." preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *a = wq_alert_controller(hex ? @"Find Hex Bytes" : @"Find Text", @"Searches the saved file forward from the top of the screen.", UIAlertControllerStyleAlert);
     [a addTextFieldWithConfigurationHandler:^(UITextField *f) {
-        f.placeholder = hex ? @"de ad be ef" : @"text";
+        f.placeholder = hex ? @"de ad be ef" : WQLocalized(@"text");
         f.autocapitalizationType = UITextAutocapitalizationTypeNone;
         f.autocorrectionType = UITextAutocorrectionTypeNo;
     }];
-    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"Find" style:UIAlertActionStyleDefault handler:^(UIAlertAction *__unused x) {
+    [a addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
+    [a addAction:wq_alert_action(@"Find", UIAlertActionStyleDefault, ^(UIAlertAction *__unused x) {
         NSString *t = a.textFields.firstObject.text ?: @"";
         if (!WQHexSearchInputWithinLimit(t)) {
             wqh_alert(self, @"Search too large", @"Use at most 1 MiB of UTF-8 search input.");
@@ -485,14 +476,14 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
         if (!sameNeedle) self->_matchLength = 0;
         self->_lastSearchNeedle = [needle copy];
         [self search:needle from:from];
-    }]];
+    })];
     [self presentViewController:a animated:YES completion:nil];
 }
 
 - (void)search:(NSData *)needle from:(unsigned long long)from
 {
     NSUInteger generation = ++_searchGeneration;
-    _status = @"Searching…";
+    _status = WQLocalized(@"Searching…");
     [self updateBar];
     NSString *path = _path;
     unsigned long long size = _size;
@@ -516,7 +507,7 @@ static void wqh_alert(UIViewController *host, NSString *title, NSString *message
             if (found == ULLONG_MAX) {
                 self->_matchLength = 0;
                 [self.tableView reloadData];
-                wqh_alert(self, @"Not found", error ?: [NSString stringWithFormat:@"No match after offset 0x%llx.", from]);
+                wqh_alert(self, @"Not found", error ?: WQLocalizedFormat(@"No match after offset 0x%llx.", from));
                 return;
             }
             self->_matchOffset = found;
