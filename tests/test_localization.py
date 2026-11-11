@@ -26,7 +26,9 @@ def read_table(path: Path) -> dict[str, str]:
 
 
 LANGUAGES = ("zh-Hans", "de", "ar")
-BIDI_CONTROLS = re.compile("[\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+# Embeddings, overrides and isolates can hide or reorder text; the plain
+# LRM/RLM marks are allowed (Arabic uses LRM before a path like /private/var).
+BIDI_CONTROLS = re.compile("[\u202a-\u202e\u2066-\u2069]")
 
 
 class LocalizationTests(unittest.TestCase):

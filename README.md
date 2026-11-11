@@ -243,5 +243,7 @@ concurrent writes still require supported-device validation.
   [KAMUI](https://github.com/murk-sus/kamui-escape) by murk-sus.
 - Simplified Chinese translation: [iosrxwy](https://github.com/iosrxwy)
   ([#38](https://github.com/kolbicz/WQFiles/pull/38)).
+- Arabic translation: [hfip](https://github.com/hfip)
+  ([#39](https://github.com/kolbicz/WQFiles/issues/39)).
 
 WQ Files is GPL-3.0-or-later (see `LICENSE`).
