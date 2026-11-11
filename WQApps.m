@@ -28,6 +28,7 @@
 @property (nonatomic) dev_t containerDevice;
 @property (nonatomic) ino_t containerInode;
 @property (nonatomic, copy) NSArray<NSDictionary *> *backups;
+@property (nonatomic) NSInteger installState;   // WQInstallState
 @end
 @implementation WQAppItem
 @end
@@ -55,6 +56,38 @@
 static NSString *const kWQAppsSortByNamePref = @"WQAppsSortByName";
 // 0 all apps, 1 Apple's, 2 everyone else's, 3 apps with a backup.
 static NSString *const kWQAppsFilterPref = @"WQAppsFilter";
+// 4 installed, 5 offloaded (issue #28).
+
+typedef NS_ENUM(NSInteger, WQInstallState) { WQInstallUnknown = 0, WQInstallInstalled, WQInstallOffloaded };
+
+// An offloaded app keeps a placeholder bundle (Info.plist and icons) but its
+// executable is removed. The bundle path comes from the LaunchServices
+// database; *why gets the reason for the Log.
+static WQInstallState wq_app_install_state(NSString *bundleID, NSString **why)
+{
+    NSString *path = bundleID.length ? wq_bundle_path_for_id(bundleID) : nil;
+    if (!path.length) { *why = @"no bundle path in the app database"; return WQInstallUnknown; }
+    NSString *plistPath = [path stringByAppendingPathComponent:@"Info.plist"];
+    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
+    if (!info && wq_grant(path)) info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
+    if (![info isKindOfClass:NSDictionary.class]) {
+        struct stat st;
+        BOOL bundleThere = lstat(path.fileSystemRepresentation, &st) == 0;
+        int err = bundleThere ? 0 : errno;
+        *why = [NSString stringWithFormat:@"can't read %@ (%s)", plistPath, bundleThere ? "bundle exists" : strerror(err)];
+        return WQInstallUnknown;
+    }
+    NSString *executable = [info[@"CFBundleExecutable"] isKindOfClass:NSString.class] ? info[@"CFBundleExecutable"] : nil;
+    if (!executable.length || [executable containsString:@"/"]) { *why = @"no CFBundleExecutable"; return WQInstallUnknown; }
+    NSString *exePath = [path stringByAppendingPathComponent:executable];
+    struct stat st;
+    if (lstat(exePath.fileSystemRepresentation, &st) == 0) { *why = @"executable present"; return WQInstallInstalled; }
+    int err = errno;
+    if (err == ENOENT) { *why = [NSString stringWithFormat:@"%@ missing from %@", executable, path.lastPathComponent]; return WQInstallOffloaded; }
+    if (wq_stat(exePath, &st)) { *why = @"executable present"; return WQInstallInstalled; }
+    *why = [NSString stringWithFormat:@"can't check %@ (%s)", exePath, strerror(err)];
+    return WQInstallUnknown;
+}
 
 static BOOL wq_app_is_apple(WQAppItem *app)
 {
@@ -562,6 +595,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         NSMutableArray<WQAppItem *> *apps = [NSMutableArray new];
         NSMutableArray<NSString *> *refused = [NSMutableArray new];
         NSUInteger i = 0, missingLabels = 0, limited = 0, sizeLimited = 0;
+        NSUInteger installCounts[3] = {0}, installNotes = 0;
         for (NSString *c in containers) {
             if (cancellation.isCancelled) { WQAppScanStep(nil); return; }
             i++;
@@ -608,11 +642,21 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
             app.sizeKnown = sizeKnown;
             if (granted && hasIdentity && !sizeKnown) sizeLimited++;
             app.backups = bid.length ? wq_app_backups(bid) : @[];
+            NSString *why = nil;
+            app.installState = bid.length ? wq_app_install_state(bid, &why) : WQInstallUnknown;
+            installCounts[app.installState]++;
+            if (app.installState != WQInstallInstalled && installNotes < 6) {
+                installNotes++;
+                wq_log(@"install state: %@: %@ (%@)", bid ?: c.lastPathComponent,
+                       app.installState == WQInstallOffloaded ? @"offloaded" : @"unknown", why ?: @"no identifier");
+            }
             [apps addObject:app];
         }
         WQAppScanStep(nil);
         if (cancellation.isCancelled) return;
         wq_log(@"app scan: %lu apps measured in %.1f s", (unsigned long)apps.count, CFAbsoluteTimeGetCurrent() - scanStarted);
+        wq_log(@"app scan: %lu installed, %lu offloaded, %lu unknown", (unsigned long)installCounts[WQInstallInstalled],
+               (unsigned long)installCounts[WQInstallOffloaded], (unsigned long)installCounts[WQInstallUnknown]);
         if (refused.count) wq_log(@"app scan: %lu containers refused access: %@", (unsigned long)refused.count,
                                   [refused componentsJoinedByString:@", "]);
         [apps sortUsingComparator:^NSComparisonResult(WQAppItem *a, WQAppItem *b) {
@@ -650,6 +694,8 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         shown = [shown filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(WQAppItem *a, NSDictionary *__unused b) {
             if (filter == 1) return wq_app_is_apple(a);
             if (filter == 2) return !wq_app_is_apple(a);
+            if (filter == 4) return a.installState == WQInstallInstalled;
+            if (filter == 5) return a.installState == WQInstallOffloaded;
             return a.backups.count > 0;
         }]];
     }
@@ -711,9 +757,14 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         name.subtitle = @"A–Z";
         UIMenu *sort = [UIMenu menuWithTitle:@"Sort By" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[size, name]];
         NSInteger current = [NSUserDefaults.standardUserDefaults integerForKey:kWQAppsFilterPref];
-        NSArray *titles = @[@"All Apps", @"Apple Apps", @"Other Apps", @"Backed Up"];
+        NSArray *titles = @[@"All Apps", @"Apple Apps", @"Other Apps", @"Backed Up", @"Installed", @"Offloaded"];
+        // Installed/Offloaded only where bundles could be checked (not on iOS 26).
+        WQAppsViewController *strongSelf = weakSelf;
+        BOOL installKnown = NO;
+        for (WQAppItem *app in strongSelf ? strongSelf->_apps : @[]) if (app.installState != WQInstallUnknown) { installKnown = YES; break; }
         NSMutableArray *filters = [NSMutableArray new];
         for (NSInteger i = 0; i < (NSInteger)titles.count; i++) {
+            if (i >= 4 && !installKnown && i != current) continue;
             UIAction *f = [UIAction actionWithTitle:titles[(NSUInteger)i] image:nil identifier:nil handler:^(UIAction *__unused a) {
                 [NSUserDefaults.standardUserDefaults setInteger:i forKey:kWQAppsFilterPref];
                 [weakSelf resortApps];
@@ -816,6 +867,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
     } else {
         c.secondaryText = [NSString stringWithFormat:@"%@ · %@%@", wq_size_text(app.bytes), app.bundleID, hasBackup ? @" · backed up" : @""];
     }
+    if (app.installState == WQInstallOffloaded) c.secondaryText = [c.secondaryText stringByAppendingString:@" · offloaded"];
     c.secondaryTextProperties.color = UIColor.secondaryLabelColor;
     c.image = wq_app_icon(app.bundleID) ?: [UIImage systemImageNamed:@"app.dashed"];
     c.imageProperties.maximumSize = CGSizeMake(36, 36);

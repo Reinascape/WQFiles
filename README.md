@@ -43,8 +43,8 @@ new files.
 - **Apps**: every app with its data size. Back up an app's **Documents and
   Library**, restore the latest backup (also from **App Backups**: long-press the app → Restore Backup), clear its data (Documents, Library,
   and tmp), open its folder, or share a backup as a ZIP over AirDrop, Files,
-  Mail and so on. Show all apps, only Apple's, only others or only backed-up
-  ones; long-press to copy the bundle ID or container path. `tmp` is intentionally ephemeral: clear removes it, but app
+  Mail and so on. Show all apps, only Apple's, only others, only backed-up
+  ones, or (iOS 27) only installed or offloaded ones; long-press to copy the bundle ID or container path. `tmp` is intentionally ephemeral: clear removes it, but app
   backups do not include it and restore leaves the current `tmp` untouched.
 - **Cache Cleaner**: cache and temp size per app, with search, Select All /
   None / Large Caches (50 MB+) and crash logs. Long-press an app to jump to its
