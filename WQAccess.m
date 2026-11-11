@@ -1958,6 +1958,16 @@ inodeScan:;
         fullAt = [cache[@"fullAt"] doubleValue];
     }
     double sampleRate = 0;
+    // A remembered scan whose app containers all vanished (for example after
+    // an iOS update that stopped fsgetpath resolving other apps' ids) must
+    // not quietly become an empty list: check again whether scanning works.
+    if (cache && ![known[0] count]) {
+        wq_log(@"scan: none of the remembered app containers resolve anymore (%lu dropped); checking whether ids still resolve", (unsigned long)dropped);
+        if (!wq_fsgetpath_sees_others(fsid, maxInode, &sampleRate)) {
+            wq_log(@"scan: on this iOS version fsgetpath only resolves WQ Files' own files, so containers can't be found by scanning");
+            return nil;
+        }
+    }
     if (!cache && !wq_fsgetpath_sees_others(fsid, maxInode, &sampleRate)) {
         wq_log(@"scan: on this iOS version fsgetpath only resolves WQ Files' own files, so containers can't be found by scanning");
         return nil;

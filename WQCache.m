@@ -663,6 +663,12 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
                 (unsigned long)missingIdentities)];
         }
         NSString *note = nil;
+        // No containers at all matters more than one limited measurement.
+        if (scanLimited && emptyRoots.count) {
+            NSString *empty = WQLocalizedFormat(emptyRoots.count == 1 ? @"No %@ container found." : @"No %@ containers found.",
+                                                [emptyRoots componentsJoinedByString:@" or "]);
+            [notes insertObject:[empty stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@".。"]] atIndex:0];
+        }
         if (scanLimited) {
             [notes addObject:WQLocalized(@"limited rows are excluded; the remaining rows can still be cleaned")];
             note = WQLocalizedFormat(@"Scan incomplete: %@. See Log.", [notes componentsJoinedByString:@"; "]);
