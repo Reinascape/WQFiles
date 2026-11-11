@@ -16,9 +16,9 @@ app data, the Cache Cleaner and the file browser work as on iOS 27. App icons
 don't: iOS 26 hands WQ Files only placeholder icons and doesn't let it read
 other apps' bundles, so apps show symbol tiles.
 
-WQ Files is available in English, German, Arabic and Simplified Chinese (it
-follows the device language; **Language** in WQ Files' Settings picks another,
-used from the next start).
+WQ Files is available in English, German, Italian, Spanish, Arabic and
+Simplified Chinese. It follows the device language; **Language** in WQ Files'
+Settings picks another, used from the next start.
 
 ## What it opens
 
