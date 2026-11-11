@@ -74,26 +74,39 @@ typedef NS_ENUM(NSInteger, WQInstallState) { WQInstallUnknown = 0, WQInstallInst
 static WQInstallState wq_app_install_state(NSString *bundleID, NSString **why)
 {
     NSString *path = bundleID.length ? wq_bundle_path_for_id(bundleID) : nil;
-    if (!path.length) { *why = @"no bundle path in the app database"; return WQInstallUnknown; }
+    if (!path.length) { *why = @"no bundle path: not in the app database"; return WQInstallUnknown; }
+    // Built-in apps live on the read-only system volume, which this app can't
+    // read; they can't be offloaded (removable Apple apps live in bundle
+    // containers like everyone else's).
+    if ([path hasPrefix:@"/Applications/"] || [path hasPrefix:@"/System/"]) {
+        *why = @"built-in: system volume";
+        return WQInstallInstalled;
+    }
     NSString *plistPath = [path stringByAppendingPathComponent:@"Info.plist"];
-    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
-    if (!info && wq_grant(path)) info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
+    NSString *readError = nil;
+    NSData *data = wq_read(plistPath, 4 * 1024 * 1024, &readError);
+    // The token may have to be for the bundle container (the .app's parent)
+    // rather than for the .app itself.
+    if (!data && (wq_grant(path.stringByDeletingLastPathComponent) || wq_grant(path)))
+        data = wq_read(plistPath, 4 * 1024 * 1024, &readError);
+    id info = data ? [NSPropertyListSerialization propertyListWithData:data options:0 format:NULL error:nil] : nil;
     if (![info isKindOfClass:NSDictionary.class]) {
         struct stat st;
         BOOL bundleThere = lstat(path.fileSystemRepresentation, &st) == 0;
-        int err = bundleThere ? 0 : errno;
-        *why = [NSString stringWithFormat:@"can't read %@ (%s)", plistPath, bundleThere ? "bundle exists" : strerror(err)];
+        *why = [NSString stringWithFormat:@"%@: %@ (%@)", data ? @"Info.plist not a dictionary" : @"Info.plist unreadable",
+                plistPath, data ? @"bad plist" : (readError ?: @"no reason")];
+        if (!data && !bundleThere) *why = [*why stringByAppendingString:@", bundle not visible"];
         return WQInstallUnknown;
     }
     NSString *executable = [info[@"CFBundleExecutable"] isKindOfClass:NSString.class] ? info[@"CFBundleExecutable"] : nil;
-    if (!executable.length || [executable containsString:@"/"]) { *why = @"no CFBundleExecutable"; return WQInstallUnknown; }
+    if (!executable.length || [executable containsString:@"/"]) { *why = @"no CFBundleExecutable: in Info.plist"; return WQInstallUnknown; }
     NSString *exePath = [path stringByAppendingPathComponent:executable];
     struct stat st;
-    if (lstat(exePath.fileSystemRepresentation, &st) == 0) { *why = @"executable present"; return WQInstallInstalled; }
+    if (lstat(exePath.fileSystemRepresentation, &st) == 0) { *why = @"installed: executable present"; return WQInstallInstalled; }
     int err = errno;
-    if (err == ENOENT) { *why = [NSString stringWithFormat:@"%@ missing from %@", executable, path.lastPathComponent]; return WQInstallOffloaded; }
-    if (wq_stat(exePath, &st)) { *why = @"executable present"; return WQInstallInstalled; }
-    *why = [NSString stringWithFormat:@"can't check %@ (%s)", exePath, strerror(err)];
+    if (wq_stat(exePath, &st)) { *why = @"installed: executable present"; return WQInstallInstalled; }
+    if (err == ENOENT) { *why = [NSString stringWithFormat:@"offloaded: %@ missing from %@", executable, path]; return WQInstallOffloaded; }
+    *why = [NSString stringWithFormat:@"executable unchecked: %@ (%s)", exePath, strerror(err)];
     return WQInstallUnknown;
 }
 
@@ -647,6 +660,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         NSMutableArray<NSString *> *refused = [NSMutableArray new];
         NSUInteger i = 0, missingLabels = 0, limited = 0, sizeLimited = 0;
         NSUInteger installCounts[3] = {0}, installNotes = 0;
+        NSMutableDictionary<NSString *, NSNumber *> *installReasons = [NSMutableDictionary new];
         for (NSString *c in containers) {
             if (cancellation.isCancelled) { WQAppScanStep(nil); return; }
             i++;
@@ -696,10 +710,13 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
             NSString *why = nil;
             app.installState = bid.length ? wq_app_install_state(bid, &why) : WQInstallUnknown;
             installCounts[app.installState]++;
-            if (app.installState != WQInstallInstalled && installNotes < 6) {
-                installNotes++;
-                wq_log(@"install state: %@: %@ (%@)", bid ?: c.lastPathComponent,
-                       app.installState == WQInstallOffloaded ? @"offloaded" : @"unknown", why ?: @"no identifier");
+            NSString *reasonKind = [why componentsSeparatedByString:@":"].firstObject ?: @"no identifier";
+            installReasons[reasonKind] = @([installReasons[reasonKind] unsignedIntegerValue] + 1);
+            // Every offloaded app (there are few, and they're the claim to check),
+            // and a few of the unknown ones.
+            if (app.installState == WQInstallOffloaded || (app.installState == WQInstallUnknown && installNotes < 6)) {
+                if (app.installState == WQInstallUnknown) installNotes++;
+                wq_log(@"install state: %@: %@", bid ?: c.lastPathComponent, why ?: @"no identifier");
             }
             [apps addObject:app];
         }
@@ -708,6 +725,10 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         wq_log(@"app scan: %lu apps measured in %.1f s", (unsigned long)apps.count, CFAbsoluteTimeGetCurrent() - scanStarted);
         wq_log(@"app scan: %lu installed, %lu offloaded, %lu unknown", (unsigned long)installCounts[WQInstallInstalled],
                (unsigned long)installCounts[WQInstallOffloaded], (unsigned long)installCounts[WQInstallUnknown]);
+        NSMutableArray *reasonParts = [NSMutableArray new];
+        for (NSString *kind in [installReasons keysSortedByValueUsingSelector:@selector(compare:)].reverseObjectEnumerator)
+            [reasonParts addObject:[NSString stringWithFormat:@"%@ %@", installReasons[kind], kind]];
+        if (reasonParts.count) wq_log(@"install state by reason: %@", [reasonParts componentsJoinedByString:@", "]);
         if (refused.count) wq_log(@"app scan: %lu containers refused access: %@", (unsigned long)refused.count,
                                   [refused componentsJoinedByString:@", "]);
         [apps sortUsingComparator:^NSComparisonResult(WQAppItem *a, WQAppItem *b) {
