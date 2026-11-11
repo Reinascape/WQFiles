@@ -776,3 +776,9 @@
 "Write this backup back to\n%@?\n\nIf a file is there now, it is backed up first and that backup is deleted after a successful restore (Keep Data Before Restore is off)." = "Write this backup back to\n%@?\n\nIf a file is there now, it is backed up first and that backup is deleted after a successful restore (Keep Data Before Restore is off).";
 "Replaces the app's current Documents and Library with the backup from %@; tmp is left untouched. The current data is backed up first, and put back if anything fails; after a successful restore that backup is deleted (Keep Data Before Restore is off). Close the app first: a running app can make the operation non-snapshot-consistent.%@" = "Replaces the app's current Documents and Library with the backup from %@; tmp is left untouched. The current data is backed up first, and put back if anything fails; after a successful restore that backup is deleted (Keep Data Before Restore is off). Close the app first: a running app can make the operation non-snapshot-consistent.%@";
 "Open %@ to use the restored Documents and Library; tmp was not changed. The data from before was not kept (Keep Data Before Restore is off)." = "Open %@ to use the restored Documents and Library; tmp was not changed. The data from before was not kept (Keep Data Before Restore is off).";
+"Language" = "Language";
+"System Default" = "System Default";
+"Restart WQ Files" = "Restart WQ Files";
+"The new language is used the next time WQ Files starts." = "The new language is used the next time WQ Files starts.";
+"Later" = "Later";
+"Quit Now" = "Quit Now";

@@ -772,3 +772,9 @@
 "Write this backup back to\n%@?\n\nIf a file is there now, it is backed up first and that backup is deleted after a successful restore (Keep Data Before Restore is off)." = "هل تريد كتابة هذه النسخة الاحتياطية مرة أخرى إلى\n%@؟\n\nإذا كان هناك ملف حاليًا، فسيُنسخ احتياطيًا أولًا وتُحذف تلك النسخة الاحتياطية بعد نجاح الاستعادة (خيار «الاحتفاظ بالبيانات قبل الاستعادة» متوقف).";
 "Replaces the app's current Documents and Library with the backup from %@; tmp is left untouched. The current data is backed up first, and put back if anything fails; after a successful restore that backup is deleted (Keep Data Before Restore is off). Close the app first: a running app can make the operation non-snapshot-consistent.%@" = "يستبدل Documents وLibrary الحاليين للتطبيق بالنسخة الاحتياطية من %@؛ ولا تُمس tmp. تُنسخ البيانات الحالية احتياطيًا أولًا، وتُعاد إذا فشل أي شيء؛ وبعد نجاح الاستعادة تُحذف تلك النسخة الاحتياطية (خيار «الاحتفاظ بالبيانات قبل الاستعادة» متوقف). أغلق التطبيق أولًا: قد يجعل التطبيق قيد التشغيل العملية غير متسقة لحظيًا.%@";
 "Open %@ to use the restored Documents and Library; tmp was not changed. The data from before was not kept (Keep Data Before Restore is off)." = "افتح %@ لاستخدام Documents وLibrary المستعادين؛ ولم تتغير tmp. لم يُحتفظ بالبيانات السابقة (خيار «الاحتفاظ بالبيانات قبل الاستعادة» متوقف).";
+"Language" = "اللغة";
+"System Default" = "لغة النظام";
+"Restart WQ Files" = "إعادة تشغيل WQ Files";
+"The new language is used the next time WQ Files starts." = "ستُستخدم اللغة الجديدة عند تشغيل WQ Files في المرة القادمة.";
+"Later" = "لاحقًا";
+"Quit Now" = "إنهاء الآن";

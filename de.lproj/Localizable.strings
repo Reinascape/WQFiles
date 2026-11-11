@@ -772,3 +772,9 @@
 "Write this backup back to\n%@?\n\nIf a file is there now, it is backed up first and that backup is deleted after a successful restore (Keep Data Before Restore is off)." = "Dieses Backup zurückschreiben nach\n%@?\n\nFalls dort jetzt eine Datei liegt, wird sie zuerst gesichert und dieses Backup nach erfolgreicher Wiederherstellung gelöscht („Daten vor Wiederherstellung behalten“ ist deaktiviert).";
 "Replaces the app's current Documents and Library with the backup from %@; tmp is left untouched. The current data is backed up first, and put back if anything fails; after a successful restore that backup is deleted (Keep Data Before Restore is off). Close the app first: a running app can make the operation non-snapshot-consistent.%@" = "Ersetzt Documents und Library der App durch das Backup vom %@; tmp bleibt unverändert. Die aktuellen Daten werden zuerst gesichert und zurückgespielt, falls etwas fehlschlägt; nach erfolgreicher Wiederherstellung wird dieses Backup gelöscht („Daten vor Wiederherstellung behalten“ ist deaktiviert). Schließe die App vorher: Eine laufende App kann verhindern, dass der Vorgang einer konsistenten Momentaufnahme entspricht.%@";
 "Open %@ to use the restored Documents and Library; tmp was not changed. The data from before was not kept (Keep Data Before Restore is off)." = "Öffne %@, um die wiederhergestellten Documents und Library zu verwenden; tmp wurde nicht geändert. Die vorherigen Daten wurden nicht behalten („Daten vor Wiederherstellung behalten“ ist deaktiviert).";
+"Language" = "Sprache";
+"System Default" = "Systemsprache";
+"Restart WQ Files" = "WQ Files neu starten";
+"The new language is used the next time WQ Files starts." = "Die neue Sprache wird beim nächsten Start von WQ Files verwendet.";
+"Later" = "Später";
+"Quit Now" = "Jetzt beenden";

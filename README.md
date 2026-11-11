@@ -17,7 +17,8 @@ don't: iOS 26 hands WQ Files only placeholder icons and doesn't let it read
 other apps' bundles, so apps show symbol tiles.
 
 WQ Files is available in English, German, Arabic and Simplified Chinese (it
-follows the device language; Settings → WQ Files → Language picks another).
+follows the device language; **Language** in WQ Files' Settings picks another,
+used from the next start).
 
 ## What it opens
 

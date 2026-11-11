@@ -94,11 +94,25 @@ static WQInstallState wq_app_install_state(NSString *bundleID, NSString **why)
     }
     NSString *plistPath = [path stringByAppendingPathComponent:@"Info.plist"];
     NSString *readError = nil;
+    // iOS 26 refuses every app bundle: after a few refusals in a row (and no
+    // success) stop trying, so the Log doesn't get a line per app.
+    static NSUInteger refusedInARow;
+    static BOOL anyRead;
+    @synchronized ([WQAppItem class]) {
+        if (!anyRead && refusedInARow >= 3) {
+            *why = @"Info.plist unreadable: this iOS refuses app bundles";
+            return WQInstallUnknown;
+        }
+    }
     NSData *data = wq_read(plistPath, 4 * 1024 * 1024, &readError);
     // The token may have to be for the bundle container (the .app's parent)
     // rather than for the .app itself.
     if (!data && (wq_grant(path.stringByDeletingLastPathComponent) || wq_grant(path)))
         data = wq_read(plistPath, 4 * 1024 * 1024, &readError);
+    @synchronized ([WQAppItem class]) {
+        if (data) { anyRead = YES; refusedInARow = 0; }
+        else if ([readError containsString:@"not permitted"]) refusedInARow++;
+    }
     id info = data ? [NSPropertyListSerialization propertyListWithData:data options:0 format:NULL error:nil] : nil;
     if (![info isKindOfClass:NSDictionary.class]) {
         struct stat st;

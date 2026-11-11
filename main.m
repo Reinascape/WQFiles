@@ -2510,6 +2510,24 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
 @interface WQRootViewController : UITableViewController
 @end
 
+static NSString *const kWQLanguagePref = @"WQLanguage";
+
+// The language picked in WQ Files, or nil for the device's.
+static NSString *wq_chosen_language(void)
+{
+    NSString *code = [NSUserDefaults.standardUserDefaults stringForKey:kWQLanguagePref];
+    return code.length ? code : nil;
+}
+
+// Each language in its own name, so it can be found whatever is shown now.
+static NSString *wq_language_name(NSString *code)
+{
+    if (!code.length) return WQLocalized(@"System Default");
+    NSString *name = [[NSLocale localeWithLocaleIdentifier:code] localizedStringForLanguageCode:code];
+    if ([code isEqualToString:@"zh-Hans"]) name = @"简体中文";
+    return name.length ? [[name substringToIndex:1].uppercaseString stringByAppendingString:[name substringFromIndex:1]] : code;
+}
+
 @implementation WQRootViewController {
     NSArray<NSArray<NSString *> *> *_locations;  // title, path, symbol
     // Kept between visits so Apps and the Cache Cleaner show their last list
@@ -2641,7 +2659,7 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
     // System Groups is the extra last row, on iOS 27 only.
-    if (section == 2) return 3;
+    if (section == 2) return 4;
     return section == 0 ? (NSInteger)_locations.count + (wq_system_areas_reachable() ? 1 : 0) : 6;
 }
 
@@ -2670,7 +2688,17 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
     UIListContentConfiguration *c = cell.defaultContentConfiguration;
     cell.accessoryView = nil;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    if (indexPath.section == 2 && indexPath.row == 3) {
+        UIListContentConfiguration *v = [UIListContentConfiguration valueCellConfiguration];
+        v.text = WQLocalized(@"Language");
+        v.image = [UIImage systemImageNamed:@"globe"];
+        v.secondaryText = wq_language_name(wq_chosen_language());
+        cell.contentConfiguration = v;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        return cell;
+    }
     if (indexPath.section == 2) {
+        cell.accessoryType = UITableViewCellAccessoryNone;
         NSInteger row = indexPath.row;
         c.text = WQLocalized(@[@"Allow Deleting", @"Show Item Counts", @"Keep Data Before Restore"][(NSUInteger)row]);
         c.image = [UIImage systemImageNamed:@[@"trash.slash", @"number", @"clock.arrow.circlepath"][(NSUInteger)row]];
@@ -2710,6 +2738,7 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
 {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (indexPath.section == 2 && indexPath.row == 3) { [self pickLanguageFrom:[tableView cellForRowAtIndexPath:indexPath]]; return; }
     if (indexPath.section == 2) return;
     UIViewController *next = nil;
     if (indexPath.section == 0) {
@@ -2738,6 +2767,42 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
         next = [WQLogViewController new];
     }
     [self.navigationController pushViewController:next animated:YES];
+}
+
+// iOS only offers Settings → WQ Files → Language when the device has more
+// than one preferred language, so WQ Files has its own picker. The choice
+// is this app's AppleLanguages default, which iOS applies at launch (text and
+// right-to-left layout alike), so it takes effect when WQ Files restarts.
+- (void)pickLanguageFrom:(UIView *)source
+{
+    UIAlertController *sheet = wq_alert_controller(@"Language", nil, UIAlertControllerStyleActionSheet);
+    NSString *current = wq_chosen_language();
+    for (NSString *code in @[@"", @"en", @"zh-Hans", @"de", @"ar"]) {
+        NSString *title = wq_language_name(code);
+        if ([code isEqualToString:current ?: @""]) title = [@"✓ " stringByAppendingString:title];
+        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *__unused a) {
+            if ([code isEqualToString:current ?: @""]) return;
+            NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+            if (code.length) {
+                [defaults setObject:code forKey:kWQLanguagePref];
+                [defaults setObject:@[code] forKey:@"AppleLanguages"];
+            } else {
+                [defaults removeObjectForKey:kWQLanguagePref];
+                [defaults removeObjectForKey:@"AppleLanguages"];
+            }
+            [defaults synchronize];
+            [self.tableView reloadData];
+            UIAlertController *restart = wq_alert_controller(@"Restart WQ Files",
+                @"The new language is used the next time WQ Files starts.", UIAlertControllerStyleAlert);
+            [restart addAction:wq_alert_action(@"Later", UIAlertActionStyleCancel, nil)];
+            [restart addAction:wq_alert_action(@"Quit Now", UIAlertActionStyleDefault, ^(UIAlertAction *__unused b) { exit(0); })];
+            [self presentViewController:restart animated:YES completion:nil];
+        }]];
+    }
+    [sheet addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
+    sheet.popoverPresentationController.sourceView = source ?: self.view;
+    sheet.popoverPresentationController.sourceRect = (source ?: self.view).bounds;
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)goToPath
