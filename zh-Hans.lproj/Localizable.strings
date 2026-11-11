@@ -854,4 +854,3 @@
 "WQ Files stopped here instead of showing empty or wrong lists. A new iOS version can block its sandbox access; please send the Log with your device and iOS version." = "WQ Files 已在此停止，而不是显示空的或错误的列表。新的 iOS 版本可能会阻止其沙盒访问；请将日志连同你的设备和 iOS 版本一起发送。";
 "iOS %@ hasn't been tested with this version of WQ Files." = "iOS %@ 尚未在此版本的 WQ Files 上测试过。";
 "iOS version" = "iOS 版本";
-"Continue Without Waiting" = "不等待，直接继续";

@@ -850,4 +850,3 @@
 "WQ Files stopped here instead of showing empty or wrong lists. A new iOS version can block its sandbox access; please send the Log with your device and iOS version." = "توقّف WQ Files هنا بدلاً من عرض قوائم فارغة أو خاطئة. قد يحظر إصدار جديد من iOS وصوله إلى الـ sandbox؛ يُرجى إرسال السجل مع ذكر جهازك وإصدار iOS.";
 "iOS %@ hasn't been tested with this version of WQ Files." = "لم يُختبر iOS %@ مع هذا الإصدار من WQ Files.";
 "iOS version" = "إصدار iOS";
-"Continue Without Waiting" = "المتابعة دون انتظار";

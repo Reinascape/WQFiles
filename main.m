@@ -2733,6 +2733,11 @@ static NSString *wq_deleted_place(NSString *original)
 
 @end
 
+@interface WQHealthViewController : UITableViewController
+- (instancetype)initWithChecks:(NSArray<WQHealthCheck *> *)checks;
+@property (nonatomic, copy, nullable) void (^onPassed)(NSArray<WQHealthCheck *> *checks);
+@end
+
 @interface WQRootViewController : UITableViewController
 @end
 
@@ -2856,6 +2861,7 @@ static NSString *wq_language_name(NSString *code)
     // right away instead of scanning every container again.
     WQAppsViewController *_apps;
     WQCacheCleanerViewController *_cacheCleaner;
+    BOOL _checkingAccess;
 }
 
 - (void)didReceiveMemoryWarning
@@ -2869,6 +2875,14 @@ static NSString *wq_language_name(NSString *code)
 {
     if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
         self.title = WQLocalizedNullable(@"WQ Files");
+        [self rebuildLocations];
+    }
+    return self;
+}
+
+- (void)rebuildLocations
+{
+    {
         _locations = @[
             @[@"App Data", @"/private/var/mobile/Containers/Data/Application", @"square.grid.2x2"],
             @[@"App Groups", @"/private/var/mobile/Containers/Shared/AppGroup", @"square.stack.3d.up"],
@@ -2882,7 +2896,6 @@ static NSString *wq_language_name(NSString *code)
         if (wq_system_areas_reachable())
             _locations = [_locations arrayByAddingObject:@[@"System Data", @"/private/var/containers/Data/System", @"cpu"]];
     }
-    return self;
 }
 
 - (void)viewDidLoad
@@ -2909,31 +2922,64 @@ static NSString *wq_language_name(NSString *code)
         [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:3 inSection:2]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
-// Signing check, once the start screen is on screen (an alert presented
-// while it is still loading would be dropped).
+// The startup check (WQHealth), once the start screen is on screen: it runs
+// in the background so nothing waits for it. A failure covers the app with
+// WQHealthViewController; warnings are shown once per build.
 - (void)viewDidAppear:(BOOL)animated
 {
     [super viewDidAppear:animated];
     static BOOL checked;
     if (checked) return;
     checked = YES;
-    dispatch_async(wq_io(), ^{
-        NSString *group = wq_app_group();
-        if (group) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            UIAlertController *alert = wq_alert_controller(@"Signing problem: no App Group", @"WQ Files needs an App Group to reach other apps' folders, and the tool that signed it removed it. "
-                        @"Without it nothing can be opened, and app lists stay empty or show \"NO TOKEN\".\n\n"
-                        @"Re-install WQ Files with AltStore, SideStore or Impactor (they create the App Group; Sideloadly doesn't), "
-                        @"or with a provisioning profile that contains one. Wildcard certificates (as used by many "
-                        @"Feather/ESign setups) can't.", UIAlertControllerStyleAlert);
-            [alert addAction:wq_alert_action(@"Signing Help", UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) {
-                [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"https://github.com/kolbicz/WQFiles#signing-the-app-group"]
-                                                 options:@{} completionHandler:nil];
-            })];
-            [alert addAction:wq_alert_action(@"OK", UIAlertActionStyleCancel, nil)];
-            [self presentViewController:alert animated:YES completion:nil];
-        });
+    _checkingAccess = YES;
+    [self.tableView reloadData];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSArray<WQHealthCheck *> *checks = wq_health_run(nil);
+        dispatch_async(dispatch_get_main_queue(), ^{ [self healthCheckFinished:checks]; });
     });
+}
+
+- (void)healthCheckFinished:(NSArray<WQHealthCheck *> *)checks
+{
+    _checkingAccess = NO;
+    [self rebuildLocations];   // App Bundles depends on the result
+    [self.tableView reloadData];
+    WQHealthState worst = wq_health_worst(checks);
+    if (worst == WQHealthWarning) { [self showHealthWarnings:checks]; return; }
+    if (worst < WQHealthFailed) return;
+    WQHealthViewController *health = [[WQHealthViewController alloc] initWithChecks:checks];
+    __weak typeof(self) weakSelf = self;
+    health.onPassed = ^(NSArray<WQHealthCheck *> *passed) {
+        [weakSelf rebuildLocations];
+        [weakSelf.tableView reloadData];
+        if (wq_health_worst(passed) == WQHealthWarning) [weakSelf showHealthWarnings:passed];
+    };
+    WQNavigationController *nav = [[WQNavigationController alloc] initWithRootViewController:health];
+    nav.modalPresentationStyle = UIModalPresentationFullScreen;
+    nav.modalInPresentation = YES;
+    // Over whatever is open by now.
+    UIViewController *host = self.navigationController ?: self;
+    while (host.presentedViewController) host = host.presentedViewController;
+    [host presentViewController:nav animated:YES completion:nil];
+}
+
+// Each set of warnings once per build, so the same notice doesn't repeat on
+// every launch.
+- (void)showHealthWarnings:(NSArray<WQHealthCheck *> *)checks
+{
+    NSMutableArray *lines = [NSMutableArray new];
+    for (WQHealthCheck *c in checks)
+        if (c.state == WQHealthWarning) [lines addObject:[NSString stringWithFormat:@"%@: %@", c.title, c.detail]];
+    NSString *text = [lines componentsJoinedByString:@"\n\n"];
+    NSString *key = [NSString stringWithFormat:@"%@|%@", NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"], text];
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    if ([[defaults stringForKey:@"WQHealthWarned"] isEqualToString:key]) return;
+    [defaults setObject:key forKey:@"WQHealthWarned"];
+    UIAlertController *alert = wq_alert_controller(@"Not everything works here", text, UIAlertControllerStyleAlert);
+    [alert addAction:wq_alert_action(@"OK", UIAlertActionStyleCancel, nil)];
+    UIViewController *host = self.navigationController ?: self;
+    while (host.presentedViewController) host = host.presentedViewController;
+    [host presentViewController:alert animated:YES completion:nil];
 }
 
 // "by kolbicz" with GitHub and X links, under the last section.
@@ -3001,6 +3047,8 @@ static NSString *wq_language_name(NSString *code)
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section
 {
+    if (section == 0 && _checkingAccess)
+        return WQLocalized(@"Checking access…");
     if (section == 0 && !wq_system_areas_reachable())
         return WQLocalized(@"On iOS 26, System Data and System Groups can't be reached (worse_query covers them on iOS 27 only), and Internal Daemons need a scan of every file id: the first one can take most of an hour on a well-used device, later ones only check new files.");
     if (section == 2)
@@ -3146,99 +3194,54 @@ static NSString *wq_language_name(NSString *code)
 
 #pragma mark - Startup check
 
-// Shown before the start screen: runs wq_health_run and only lets WQ Files
-// start when its sandbox access really works. A failure stays here with what
-// failed (Retry, Log, Continue Anyway); warnings start the app with a notice.
-@interface WQHealthViewController : UITableViewController
-@end
+// The startup check runs in the background while the start screen is up
+// (WQRootViewController). When something essential fails, this screen covers
+// the app with what failed; it only goes away through Try Again (when the
+// check then passes) or Continue Anyway. (Declared before the start screen.)
 
 @implementation WQHealthViewController {
     NSArray<WQHealthCheck *> *_checks;
     NSString *_stage;
-    BOOL _running, _slow, _started;
-    NSUInteger _runID;
+    BOOL _running;
 }
 
-- (instancetype)init { return [super initWithStyle:UITableViewStyleInsetGrouped]; }
+- (instancetype)initWithChecks:(NSArray<WQHealthCheck *> *)checks
+{
+    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) _checks = [checks copy];
+    return self;
+}
 
 - (void)viewDidLoad
 {
     [super viewDidLoad];
     self.title = WQLocalizedNullable(@"WQ Files");
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAlways;
     self.navigationController.navigationBar.prefersLargeTitles = YES;
     self.tableView.tableHeaderView = wq_device_header(self.view.bounds.size.width);
-    [self run];
 }
 
-- (void)run
+- (void)retry
 {
     if (_running) return;
     _running = YES;
-    _slow = NO;
-    _checks = nil;
     _stage = WQLocalized(@"Checking access…");
-    NSUInteger runID = ++_runID;
     [self.tableView reloadData];
-    // A first launch may have to search for the app database: after a while,
-    // let the user go on without waiting.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (runID != self->_runID || !self->_running) return;
-        self->_slow = YES;
-        [self.tableView reloadData];
-    });
+    wq_enumerate_invalidate();
+    wq_display_names_reset_miss();
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSArray *checks = wq_health_run(^(NSString *text) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                self->_stage = text;
-                if (!self->_checks) [self.tableView reloadData];
-            });
+            dispatch_async(dispatch_get_main_queue(), ^{ self->_stage = text; [self.tableView reloadData]; });
         });
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_running = NO;
-            if (self->_started) return;   // went on without waiting
             self->_checks = checks;
-            WQHealthState worst = wq_health_worst(checks);
-            if (worst < WQHealthFailed) [self startAppWarning:worst == WQHealthWarning];
-            else [self.tableView reloadData];
+            if (wq_health_worst(checks) < WQHealthFailed) {
+                void (^passed)(NSArray *) = self.onPassed;
+                [self dismissViewControllerAnimated:YES completion:^{ if (passed) passed(checks); }];
+                return;
+            }
+            [self.tableView reloadData];
         });
     });
-}
-
-- (void)startAppWarning:(BOOL)warn
-{
-    if (_started) return;
-    _started = YES;
-    UIWindow *window = self.view.window;
-    WQNavigationController *nav = [[WQNavigationController alloc] initWithRootViewController:[WQRootViewController new]];
-    if (!window) return;
-    [UIView transitionWithView:window duration:0.25 options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
-        window.rootViewController = nav;
-    } completion:nil];
-    if (!warn) return;
-    // Each set of warnings once per build, so the same notice doesn't repeat
-    // on every launch.
-    NSMutableArray *lines = [NSMutableArray new];
-    for (WQHealthCheck *c in _checks)
-        if (c.state == WQHealthWarning) [lines addObject:[NSString stringWithFormat:@"%@: %@", c.title, c.detail]];
-    NSString *text = [lines componentsJoinedByString:@"\n\n"];
-    NSString *key = [NSString stringWithFormat:@"%@|%@", NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"], text];
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    if ([[defaults stringForKey:@"WQHealthWarned"] isEqualToString:key]) return;
-    [defaults setObject:key forKey:@"WQHealthWarned"];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIAlertController *alert = wq_alert_controller(@"Not everything works here", text, UIAlertControllerStyleAlert);
-        [alert addAction:wq_alert_action(@"OK", UIAlertActionStyleCancel, nil)];
-        [nav.topViewController presentViewController:alert animated:YES completion:nil];
-    });
-}
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return _checks ? 2 : 1; }
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
-{
-    if (!_checks) return _slow ? 2 : 1;
-    return section == 0 ? (NSInteger)_checks.count : (NSInteger)self.actions.count;
 }
 
 // The buttons under the checks: 0 Try Again, 1 Log, 3 Signing Help (when
@@ -3249,15 +3252,22 @@ static NSString *wq_language_name(NSString *code)
     return noGroup ? @[@0, @1, @3, @2] : @[@0, @1, @2];
 }
 
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return _running ? 1 : 2; }
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    if (_running) return 1;
+    return section == 0 ? (NSInteger)_checks.count : (NSInteger)self.actions.count;
+}
+
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section
 {
-    if (!_checks || section != 0) return nil;
-    return WQLocalized(@"WQ Files can't work properly here");
+    return !_running && section == 0 ? WQLocalized(@"WQ Files can't work properly here") : nil;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section
 {
-    if (!_checks) return nil;
+    if (_running) return nil;
     if (section == 0)
         return WQLocalized(@"WQ Files stopped here instead of showing empty or wrong lists. A new iOS version can block its sandbox access; please send the Log with your device and iOS version.");
     return WQLocalized(@"Continue Anyway opens WQ Files as it is: lists may be empty or wrong, and nothing should be restored or deleted based on them.");
@@ -3270,12 +3280,7 @@ static NSString *wq_language_name(NSString *code)
     UIListContentConfiguration *c = [UIListContentConfiguration subtitleCellConfiguration];
     cell.accessoryView = nil;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    if (!_checks && indexPath.row == 1) {
-        c = [UIListContentConfiguration cellConfiguration];
-        c.text = WQLocalized(@"Continue Without Waiting");
-        c.textProperties.color = self.view.tintColor;
-        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    } else if (!_checks) {
+    if (_running) {
         c.text = _stage;
         UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithFrame:CGRectZero];
         [spinner sizeToFit];
@@ -3306,17 +3311,10 @@ static NSString *wq_language_name(NSString *code)
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
 {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (!_checks && indexPath.row == 1) {
-        wq_log(@"health: the user continued before the check finished");
-        [self startAppWarning:NO];
-        return;
-    }
-    if (!_checks || indexPath.section != 1) return;
+    if (_running || indexPath.section != 1) return;
     switch (self.actions[(NSUInteger)indexPath.row].integerValue) {
         case 0:
-            wq_enumerate_invalidate();
-            wq_display_names_reset_miss();
-            [self run];
+            [self retry];
             break;
         case 1:
             [self.navigationController pushViewController:[WQLogViewController new] animated:YES];
@@ -3331,7 +3329,7 @@ static NSString *wq_language_name(NSString *code)
             [alert addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
             [alert addAction:wq_alert_action(@"Continue", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
                 wq_log(@"health: the user continued despite failed checks");
-                [self startAppWarning:NO];
+                [self dismissViewControllerAnimated:YES completion:nil];
             })];
             [self presentViewController:alert animated:YES completion:nil];
         }
@@ -3351,7 +3349,7 @@ static NSString *wq_language_name(NSString *code)
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options
 {
     UIWindow *window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
-    window.rootViewController = [[WQNavigationController alloc] initWithRootViewController:[WQHealthViewController new]];
+    window.rootViewController = [[WQNavigationController alloc] initWithRootViewController:[WQRootViewController new]];
     [window makeKeyAndVisible];
     self.window = window;
 }

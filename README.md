@@ -153,11 +153,12 @@ and only change what you understand.
 
 ## Troubleshooting
 
-- **Startup check**: before the start screen, WQ Files checks the App Group,
-  whether it finds other apps' folders, whether its sandbox access really
-  opens a sample of them, and whether the app database identifies them. A new
-  iOS version can break any of these; instead of empty or wrong lists, WQ Files
-  then stops with what failed (Try Again, Log, Continue Anyway). Problems that
+- **Startup check**: while the start screen is up, WQ Files checks in the
+  background the App Group, whether it finds other apps' folders, whether its
+  sandbox access really opens a sample of them, and whether the app database
+  identifies them. A new iOS version can break any of these; instead of empty
+  or wrong lists, WQ Files then covers everything with what failed (Try Again,
+  Log, Continue Anyway). Problems that
   leave it partly usable (app names, an untested iOS version) are shown once as
   a warning. The result is in **Log** as `health: …`.
 
