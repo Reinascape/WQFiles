@@ -4,6 +4,7 @@
 //
 
 #import "WQArchive.h"
+#import "WQLocalization.h"
 #import <dirent.h>
 #import <fcntl.h>
 #import <sys/time.h>
@@ -131,13 +132,13 @@ static BOOL wq_zip_fail(WQZipWriter *w, NSString *message)
 
 static BOOL wq_zip_too_big(WQZipWriter *w)
 {
-    return wq_zip_fail(w, @"The archive would be larger than 4 GB, which isn't supported yet.");
+    return wq_zip_fail(w, WQLocalized(@"The archive would be larger than 4 GB, which isn't supported yet."));
 }
 
 static BOOL wq_zip_local_header(WQZipWriter *w, WQZipEntry *e)
 {
     if (w->offset >= kWQZipMax32) return wq_zip_too_big(w);
-    if (w->entries.count >= 0xFFFF) return wq_zip_fail(w, @"Too many items for one ZIP (more than 65535).");
+    if (w->entries.count >= 0xFFFF) return wq_zip_fail(w, WQLocalized(@"Too many items for one ZIP (more than 65535)."));
     e.offset = w->offset;
     NSMutableData *h = [NSMutableData dataWithCapacity:30 + e.name.length];
     wq_put32(h, 0x04034b50);
@@ -159,7 +160,7 @@ static BOOL wq_zip_local_header(WQZipWriter *w, WQZipEntry *e)
 static BOOL wq_zip_add_file(WQZipWriter *w, NSString *path, NSString *name, const struct stat *st)
 {
     int in = w->io.openRead(path);
-    if (in < 0) return wq_zip_fail(w, [NSString stringWithFormat:@"Can't read %@ (%s)", name, strerror(errno)]);
+    if (in < 0) return wq_zip_fail(w, WQLocalizedFormat(@"Can't read %@ (%s)", name, strerror(errno)));
     WQZipEntry *e = [WQZipEntry new];
     e.name = [name dataUsingEncoding:NSUTF8StringEncoding];
     e.method = 8;
@@ -169,18 +170,18 @@ static BOOL wq_zip_add_file(WQZipWriter *w, NSString *path, NSString *name, cons
 
     z_stream z = {0};
     if (deflateInit2(&z, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
-        close(in); return wq_zip_fail(w, @"Can't start compression");
+        close(in); return wq_zip_fail(w, WQLocalized(@"Can't start compression"));
     }
     uint8_t *inBuf = malloc(kWQZipChunk), *outBuf = malloc(kWQZipChunk);
     BOOL ok = inBuf && outBuf;
-    if (!ok) wq_zip_fail(w, @"Out of memory");
+    if (!ok) wq_zip_fail(w, WQLocalized(@"Out of memory"));
     uLong crc = crc32(0, NULL, 0);
     uint64_t usize = 0, csize = 0;
     BOOL eof = NO;
     while (ok && !eof) {
         if (w->cancelled && w->cancelled()) { ok = wq_zip_fail(w, @"Cancelled"); break; }
         ssize_t n = wq_read_some(in, inBuf, kWQZipChunk);
-        if (n < 0) { ok = wq_zip_fail(w, [NSString stringWithFormat:@"Can't read %@ (%s)", name, strerror(errno)]); break; }
+        if (n < 0) { ok = wq_zip_fail(w, WQLocalizedFormat(@"Can't read %@ (%s)", name, strerror(errno))); break; }
         eof = n == 0;
         crc = crc32(crc, inBuf, (uInt)n);
         usize += (uint64_t)n;
@@ -192,7 +193,7 @@ static BOOL wq_zip_add_file(WQZipWriter *w, NSString *path, NSString *name, cons
         do {
             z.next_out = outBuf; z.avail_out = (uInt)kWQZipChunk;
             rc = deflate(&z, flush);
-            if (rc == Z_STREAM_ERROR) { ok = wq_zip_fail(w, @"Compression failed"); break; }
+            if (rc == Z_STREAM_ERROR) { ok = wq_zip_fail(w, WQLocalized(@"Compression failed")); break; }
             size_t have = kWQZipChunk - z.avail_out;
             if (have && !wq_write_fd(w->out, outBuf, have)) { ok = wq_zip_fail(w, @(strerror(errno))); break; }
             csize += have;
@@ -215,9 +216,9 @@ static BOOL wq_zip_add_file(WQZipWriter *w, NSString *path, NSString *name, cons
 static BOOL wq_zip_add(WQZipWriter *w, NSString *path, NSString *name, NSUInteger depth)
 {
     if (w->cancelled && w->cancelled()) return wq_zip_fail(w, @"Cancelled");
-    if (depth > 64) return wq_zip_fail(w, @"Folders are nested too deeply");
+    if (depth > 64) return wq_zip_fail(w, WQLocalized(@"Folders are nested too deeply"));
     struct stat st;
-    if (!w->io.stat(path, &st)) return wq_zip_fail(w, [NSString stringWithFormat:@"Can't read %@ (%s)", name, strerror(errno)]);
+    if (!w->io.stat(path, &st)) return wq_zip_fail(w, WQLocalizedFormat(@"Can't read %@ (%s)", name, strerror(errno)));
     if (S_ISREG(st.st_mode)) return wq_zip_add_file(w, path, name, &st);
     if (!S_ISDIR(st.st_mode)) { w->skipped++; return YES; }   // links and special files
     WQZipEntry *e = [WQZipEntry new];
@@ -228,7 +229,7 @@ static BOOL wq_zip_add(WQZipWriter *w, NSString *path, NSString *name, NSUIntege
     e.crc = 0;
     if (!wq_zip_local_header(w, e)) return NO;
     NSArray<NSString *> *children = w->io.list(path);
-    if (!children) return wq_zip_fail(w, [NSString stringWithFormat:@"Can't list %@", name]);
+    if (!children) return wq_zip_fail(w, WQLocalizedFormat(@"Can't list %@", name));
     for (NSString *child in [children sortedArrayUsingSelector:@selector(localizedStandardCompare:)]) {
         if (!wq_zip_add(w, [path stringByAppendingPathComponent:child], [name stringByAppendingFormat:@"/%@", child], depth + 1))
             return NO;
@@ -275,7 +276,7 @@ BOOL wq_zip_write(NSArray<NSString *> *paths, NSString *zipPath, WQArchiveIO *io
                   WQArchiveCancelled cancelled, WQArchiveProgress progress,
                   NSUInteger *skipped, NSString **errorText)
 {
-    if (paths.count == 0) { if (errorText) *errorText = @"Nothing to compress"; return NO; }
+    if (paths.count == 0) { if (errorText) *errorText = WQLocalized(@"Nothing to compress"); return NO; }
     int out = open(zipPath.fileSystemRepresentation, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
     if (out < 0) { if (errorText) *errorText = @(strerror(errno)); return NO; }
     NSMutableArray *entries = [NSMutableArray new];
@@ -285,7 +286,7 @@ BOOL wq_zip_write(NSArray<NSString *> *paths, NSString *zipPath, WQArchiveIO *io
     NSMutableSet<NSString *> *topNames = [NSMutableSet new];
     for (NSString *path in paths) {
         NSString *name = path.lastPathComponent;
-        if (!name.length || [topNames containsObject:name]) { ok = wq_zip_fail(&w, @"Two selected items have the same name"); break; }
+        if (!name.length || [topNames containsObject:name]) { ok = wq_zip_fail(&w, WQLocalized(@"Two selected items have the same name")); break; }
         [topNames addObject:name];
         if (!(ok = wq_zip_add(&w, path, name, 0))) break;
     }
@@ -295,7 +296,7 @@ BOOL wq_zip_write(NSArray<NSString *> *paths, NSString *zipPath, WQArchiveIO *io
     if (close(out) != 0 && ok) { ok = NO; error = @(strerror(errno)); }
     if (!ok) unlink(zipPath.fileSystemRepresentation);
     if (skipped) *skipped = w.skipped;
-    if (!ok && errorText) *errorText = error ?: @"Could not create the ZIP";
+    if (!ok && errorText) *errorText = error ?: WQLocalized(@"Could not create the ZIP");
     return ok;
 }
 
@@ -336,14 +337,14 @@ static NSString *wq_zip_decode_name(const uint8_t *p, uint16_t len, uint16_t fla
 static BOOL wq_zip_read_directory(int fd, uint64_t fileSize, WQZipItem **itemsOut, NSUInteger *countOut, NSString **error)
 {
     size_t tailLen = (size_t)MIN(fileSize, (uint64_t)(22 + 65535));
-    if (tailLen < 22) { *error = @"Not a ZIP file"; return NO; }
+    if (tailLen < 22) { *error = WQLocalized(@"Not a ZIP file"); return NO; }
     uint8_t *tail = malloc(tailLen);
-    if (!tail || !wq_pread_all(fd, tail, tailLen, (off_t)(fileSize - tailLen))) { free(tail); *error = @"Can't read the ZIP file"; return NO; }
+    if (!tail || !wq_pread_all(fd, tail, tailLen, (off_t)(fileSize - tailLen))) { free(tail); *error = WQLocalized(@"Can't read the ZIP file"); return NO; }
     ssize_t eocd = -1;
     for (ssize_t i = (ssize_t)tailLen - 22; i >= 0; i--) {
         if (wq_rd32(tail + i) == 0x06054b50) { eocd = i; break; }
     }
-    if (eocd < 0) { free(tail); *error = @"Not a ZIP file (no directory found)"; return NO; }
+    if (eocd < 0) { free(tail); *error = WQLocalized(@"Not a ZIP file (no directory found)"); return NO; }
     uint64_t eocdPos = fileSize - tailLen + (uint64_t)eocd;
     uint64_t count = wq_rd16(tail + eocd + 10);
     uint64_t cdSize = wq_rd32(tail + eocd + 12);
@@ -361,13 +362,13 @@ static BOOL wq_zip_read_directory(int fd, uint64_t fileSize, WQZipItem **itemsOu
         }
     }
     if (cdOffset > fileSize || cdSize > fileSize - cdOffset || cdSize > 256ull * 1024 * 1024 || count > cdSize / 46 + 1) {
-        *error = @"The ZIP file is damaged (bad directory)";
+        *error = WQLocalized(@"The ZIP file is damaged (bad directory)");
         return NO;
     }
     uint8_t *cd = malloc(cdSize ? (size_t)cdSize : 1);
-    if (!cd || (cdSize && !wq_pread_all(fd, cd, (size_t)cdSize, (off_t)cdOffset))) { free(cd); *error = @"Can't read the ZIP directory"; return NO; }
+    if (!cd || (cdSize && !wq_pread_all(fd, cd, (size_t)cdSize, (off_t)cdOffset))) { free(cd); *error = WQLocalized(@"Can't read the ZIP directory"); return NO; }
     WQZipItem *items = calloc((size_t)MAX(count, 1), sizeof(WQZipItem));
-    if (!items) { free(cd); *error = @"Out of memory"; return NO; }
+    if (!items) { free(cd); *error = WQLocalized(@"Out of memory"); return NO; }
     uint64_t pos = 0;
     NSUInteger n = 0;
     BOOL ok = YES;
@@ -412,7 +413,7 @@ static BOOL wq_zip_read_directory(int fd, uint64_t fileSize, WQZipItem **itemsOu
     if (!ok) {
         for (NSUInteger i = 0; i < n; i++) CFBridgingRelease((__bridge CFTypeRef)items[i].name);
         free(items);
-        *error = @"The ZIP file is damaged (bad entry)";
+        *error = WQLocalized(@"The ZIP file is damaged (bad entry)");
         return NO;
     }
     *itemsOut = items;
@@ -432,15 +433,15 @@ static BOOL wq_zip_extract_entry(int fd, uint64_t fileSize, const WQZipItem *it,
 {
     uint8_t lh[30];
     if (it->offset + 30 > fileSize || !wq_pread_all(fd, lh, 30, (off_t)it->offset) || wq_rd32(lh) != 0x04034b50) {
-        *error = @"The ZIP file is damaged (bad entry header)"; return NO;
+        *error = WQLocalized(@"The ZIP file is damaged (bad entry header)"); return NO;
     }
     uint64_t dataPos = it->offset + 30 + wq_rd16(lh + 26) + wq_rd16(lh + 28);
-    if (dataPos > fileSize || it->csize > fileSize - dataPos) { *error = @"The ZIP file is damaged (entry out of range)"; return NO; }
+    if (dataPos > fileSize || it->csize > fileSize - dataPos) { *error = WQLocalized(@"The ZIP file is damaged (entry out of range)"); return NO; }
     uint8_t *inBuf = malloc(kWQZipChunk), *outBuf = malloc(kWQZipChunk);
-    if (!inBuf || !outBuf) { free(inBuf); free(outBuf); *error = @"Out of memory"; return NO; }
+    if (!inBuf || !outBuf) { free(inBuf); free(outBuf); *error = WQLocalized(@"Out of memory"); return NO; }
     z_stream z = {0};
     BOOL inflating = it->method == 8;
-    if (inflating && inflateInit2(&z, -MAX_WBITS) != Z_OK) { free(inBuf); free(outBuf); *error = @"Can't start decompression"; return NO; }
+    if (inflating && inflateInit2(&z, -MAX_WBITS) != Z_OK) { free(inBuf); free(outBuf); *error = WQLocalized(@"Can't start decompression"); return NO; }
     uLong crc = crc32(0, NULL, 0);
     uint64_t remaining = it->csize, produced = 0;
     off_t readPos = (off_t)dataPos;
@@ -449,7 +450,7 @@ static BOOL wq_zip_extract_entry(int fd, uint64_t fileSize, const WQZipItem *it,
         if (cancelled && cancelled()) { *error = @"Cancelled"; ok = NO; break; }
         if (z.avail_in == 0 && remaining > 0) {
             size_t chunk = (size_t)MIN(remaining, (uint64_t)kWQZipChunk);
-            if (!wq_pread_all(fd, inBuf, chunk, readPos)) { *error = @"Can't read the ZIP file"; ok = NO; break; }
+            if (!wq_pread_all(fd, inBuf, chunk, readPos)) { *error = WQLocalized(@"Can't read the ZIP file"); ok = NO; break; }
             readPos += (off_t)chunk; remaining -= chunk;
             z.next_in = inBuf; z.avail_in = (uInt)chunk;
         }
@@ -460,9 +461,9 @@ static BOOL wq_zip_extract_entry(int fd, uint64_t fileSize, const WQZipItem *it,
             int rc = inflate(&z, Z_NO_FLUSH);
             if (rc == Z_STREAM_END) done = YES;
             else if (rc == Z_BUF_ERROR && z.avail_in == 0 && remaining == 0) {
-                *error = @"The ZIP file is damaged (data ends early)"; ok = NO; break;
+                *error = WQLocalized(@"The ZIP file is damaged (data ends early)"); ok = NO; break;
             } else if (rc != Z_OK && rc != Z_BUF_ERROR) {
-                *error = @"The ZIP file is damaged (bad compressed data)"; ok = NO; break;
+                *error = WQLocalized(@"The ZIP file is damaged (bad compressed data)"); ok = NO; break;
             }
             data = outBuf; have = kWQZipChunk - z.avail_out;
         } else {
@@ -471,8 +472,8 @@ static BOOL wq_zip_extract_entry(int fd, uint64_t fileSize, const WQZipItem *it,
             done = remaining == 0;
         }
         produced += have;
-        if (produced > it->usize) { *error = @"The ZIP file is damaged (entry larger than stated)"; ok = NO; break; }
-        if (*written + have > maxBytes) { *error = @"Not enough free space to extract this ZIP"; ok = NO; break; }
+        if (produced > it->usize) { *error = WQLocalized(@"The ZIP file is damaged (entry larger than stated)"); ok = NO; break; }
+        if (*written + have > maxBytes) { *error = WQLocalized(@"Not enough free space to extract this ZIP"); ok = NO; break; }
         if (have && !wq_write_fd(out, data, have)) { *error = @(strerror(errno)); ok = NO; break; }
         crc = crc32(crc, data, (uInt)have);
         *written += have;
@@ -481,7 +482,7 @@ static BOOL wq_zip_extract_entry(int fd, uint64_t fileSize, const WQZipItem *it,
     if (inflating) inflateEnd(&z);
     free(inBuf); free(outBuf);
     if (ok && (produced != it->usize || (uint32_t)crc != it->crc)) {
-        *error = @"The ZIP file is damaged (checksum mismatch)"; ok = NO;
+        *error = WQLocalized(@"The ZIP file is damaged (checksum mismatch)"); ok = NO;
     }
     return ok;
 }
@@ -494,7 +495,7 @@ BOOL wq_zip_extract(NSString *zipPath, NSString *outDir, WQArchiveIO *io, unsign
     int fd = io.openRead(zipPath);
     if (fd < 0) { if (errorText) *errorText = @(strerror(errno)); return NO; }
     struct stat st;
-    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) { close(fd); if (errorText) *errorText = @"Not a regular file"; return NO; }
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) { close(fd); if (errorText) *errorText = WQLocalized(@"Not a regular file"); return NO; }
     uint64_t fileSize = (uint64_t)st.st_size;
     WQZipItem *items = NULL;
     NSUInteger count = 0;
@@ -509,20 +510,20 @@ BOOL wq_zip_extract(NSString *zipPath, NSString *outDir, WQArchiveIO *io, unsign
         WQZipItem *it = &items[i];
         NSString *safe = wq_zip_safe_entry_path(it->name);
         if (!safe) {
-            ok = NO; error = [NSString stringWithFormat:@"The ZIP contains an unsafe name (%@); nothing was extracted.", it->name];
+            ok = NO; error = WQLocalizedFormat(@"The ZIP contains an unsafe name (%@); nothing was extracted.", it->name);
             break;
         }
         [safeNames addObject:safe];
-        if (it->flags & 0x0001) { ok = NO; error = @"This ZIP is encrypted, which isn't supported."; break; }
+        if (it->flags & 0x0001) { ok = NO; error = WQLocalized(@"This ZIP is encrypted, which isn't supported."); break; }
         BOOL isDir = [it->name hasSuffix:@"/"] || [it->name hasSuffix:@"\\"];
         if (!isDir && it->method != 0 && it->method != 8) {
-            ok = NO; error = [NSString stringWithFormat:@"This ZIP uses a compression method that isn't supported (%u).", it->method];
+            ok = NO; error = WQLocalizedFormat(@"This ZIP uses a compression method that isn't supported (%u).", it->method);
             break;
         }
-        if (it->method == 0 && it->csize != it->usize) { ok = NO; error = @"The ZIP file is damaged (bad sizes)"; break; }
+        if (it->method == 0 && it->csize != it->usize) { ok = NO; error = WQLocalized(@"The ZIP file is damaged (bad sizes)"); break; }
         declared += it->usize;
     }
-    if (ok && declared > maxBytes) { ok = NO; error = @"Not enough free space to extract this ZIP"; }
+    if (ok && declared > maxBytes) { ok = NO; error = WQLocalized(@"Not enough free space to extract this ZIP"); }
     NSUInteger files = 0, skipped = 0;
     unsigned long long written = 0;
     NSFileManager *fm = NSFileManager.defaultManager;
@@ -537,19 +538,19 @@ BOOL wq_zip_extract(NSString *zipPath, NSString *outDir, WQArchiveIO *io, unsign
         NSString *target = [outDir stringByAppendingPathComponent:rel];
         if (isDir) {
             if (![fm createDirectoryAtPath:target withIntermediateDirectories:YES attributes:nil error:nil]) {
-                ok = NO; error = [NSString stringWithFormat:@"Can't create the folder %@", rel];
+                ok = NO; error = WQLocalizedFormat(@"Can't create the folder %@", rel);
             }
             continue;
         }
         NSString *parent = target.stringByDeletingLastPathComponent;
         if (![fm createDirectoryAtPath:parent withIntermediateDirectories:YES attributes:nil error:nil]) {
-            ok = NO; error = [NSString stringWithFormat:@"Can't create the folder for %@", rel]; break;
+            ok = NO; error = WQLocalizedFormat(@"Can't create the folder for %@", rel); break;
         }
         int out = open(target.fileSystemRepresentation, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
         if (out < 0) {
             ok = NO;
-            error = errno == EEXIST ? [NSString stringWithFormat:@"The ZIP contains %@ twice", rel]
-                                    : [NSString stringWithFormat:@"Can't create %@ (%s)", rel, strerror(errno)];
+            error = errno == EEXIST ? WQLocalizedFormat(@"The ZIP contains %@ twice", rel)
+                                    : WQLocalizedFormat(@"Can't create %@ (%s)", rel, strerror(errno));
             break;
         }
         NSString *entryError = nil;
@@ -562,13 +563,13 @@ BOOL wq_zip_extract(NSString *zipPath, NSString *outDir, WQArchiveIO *io, unsign
             }
         }
         if (close(out) != 0 && ok) { ok = NO; entryError = @(strerror(errno)); }
-        if (!ok) error = entryError ?: @"Extraction failed";
+        if (!ok) error = entryError ?: WQLocalized(@"Extraction failed");
         else files++;
     }
     close(fd);
     wq_zip_free_items(items, count);
     if (filesOut) *filesOut = files;
     if (skippedOut) *skippedOut = skipped;
-    if (!ok && errorText) *errorText = error ?: @"Extraction failed";
+    if (!ok && errorText) *errorText = error ?: WQLocalized(@"Extraction failed");
     return ok;
 }

@@ -315,12 +315,23 @@ void wq_set_keep_before_restore(BOOL keep)
 BOOL wq_refuse_if_deleting_off(UIViewController *host)
 {
     if (wq_deleting_allowed()) return NO;
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Deleting is turned off"
-        message:@"Turn on Allow Deleting on the start screen of WQ Files to delete, clear or clean."
-        preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    UIAlertController *alert = wq_alert_controller(@"Deleting is turned off",
+        @"Turn on Allow Deleting on the start screen of WQ Files to delete, clear or clean.", UIAlertControllerStyleAlert);
+    [alert addAction:wq_alert_action(@"OK", UIAlertActionStyleDefault, nil)];
     [host presentViewController:alert animated:YES completion:nil];
     return YES;
+}
+
+UIAlertController *wq_alert_controller(NSString *title, NSString *message, UIAlertControllerStyle style)
+{
+    return [UIAlertController alertControllerWithTitle:WQLocalizedNullable(title)
+                                               message:WQLocalizedNullable(message)
+                                        preferredStyle:style];
+}
+
+UIAlertAction *wq_alert_action(NSString *title, UIAlertActionStyle style, void (^handler)(UIAlertAction *))
+{
+    return [UIAlertAction actionWithTitle:WQLocalized(title) style:style handler:handler];
 }
 
 void wq_alert(UIViewController *host, NSString *title, NSString *message)
@@ -331,9 +342,8 @@ void wq_alert(UIViewController *host, NSString *title, NSString *message)
     UINavigationController *nav = host.navigationController;
     if (nav && nav.topViewController != host) return;
     if (host.presentedViewController && !host.presentedViewController.isBeingDismissed) return;
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    UIAlertController *alert = wq_alert_controller(title, message, UIAlertControllerStyleAlert);
+    [alert addAction:wq_alert_action(@"OK", UIAlertActionStyleDefault, nil)];
     [host presentViewController:alert animated:YES completion:nil];
 }
 

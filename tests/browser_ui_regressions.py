@@ -27,7 +27,7 @@ require(main, "self->_error = (names || childPaths != nil) ? nil", "empty enumer
 require(main, "item.isRegular = S_ISREG(st.st_mode);", "regular-file metadata")
 require(main, "Only regular files can be viewed.", "special-file view refusal")
 require(main, "wq_backup_original_path(item.path)", "typed backup path derivation")
-require(main, "initWithPath:wq_backup_root() title:@\"Backups\"", "Backups root navigation")
+require(main, "initWithPath:wq_backup_root() title:WQLocalizedNullable(@\"Backups\")", "Backups root navigation")
 require(main, "if (!_version)", "nil editor version refusal")
 forbid(main, "childPaths.count) ? nil : error", "count-based enumeration success check")
 forbid(main, "wq_backup_root().stringByDeletingLastPathComponent title:@\"Backups\"", "parent-path Backups navigation")
@@ -62,7 +62,7 @@ require(sharing, "Only regular files can be shared.", "special-file share refusa
 require(ui, "host.presentedViewController && !host.presentedViewController.isBeingDismissed", "validated alert host")
 require(sharing, "Share in progress", "share in-flight guard")
 require(sharing, "wq_clear_in_flight", "share in-flight cleanup")
-require(sharing, "actionWithTitle:@\"Cancel\"", "folder share cancel action")
+require(sharing, "wq_alert_action(@\"Cancel\"", "folder share cancel action")
 clear_preparation = sharing.split("static void wq_clear_preparation", 1)[1].split("static BOOL wq_present_share", 1)[0]
 require(clear_preparation, "if (!host) return;", "nil weak host association guard")
 

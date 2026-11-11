@@ -397,13 +397,13 @@ static inline NSString *WQAppsSupportImportRoot(NSString *dir, NSString **error)
         if (found.count > 1) {
             NSMutableArray *names = [NSMutableArray new];
             for (NSString *f in found) [names addObject:[f substringFromIndex:MIN(dir.length + 1, f.length)]];
-            if (error) *error = [NSString stringWithFormat:@"It holds data of several apps (%@). Pick one of these folders instead.",
+            if (error) *error = [NSString stringWithFormat:NSLocalizedString(@"It holds data of several apps (%@). Pick one of these folders instead.", nil),
                                  [names componentsJoinedByString:@", "]];
             return nil;
         }
         level = next;
     }
-    if (error) *error = @"No Documents or Library folder was found in it.";
+    if (error) *error = NSLocalizedString(@"No Documents or Library folder was found in it.", nil);
     return nil;
 }
 
