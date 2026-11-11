@@ -120,7 +120,10 @@ symbol tile.
 
 Before a regular file is overwritten or deleted, its contents are copied to
 **Backups** inside the app (also reachable in the Files app). Long-press a
-backup to restore it to its original location. In the file browser only empty
+backup to restore it to its original location. **Recently Deleted** (under
+Backups on the start screen) lists the backed-up files whose original is gone,
+newest first: restore one to where it was (missing folders are created), or
+delete it from Backups for good. In the file browser only empty
 folders can be deleted; symbolic links are removed as links. Clearing an app's
 data and cleaning caches delete without a file-by-file backup; Apps offers to
 back up Documents and Library first, while `tmp` is discarded and cannot be
@@ -148,6 +151,14 @@ Editing another app's or the system's files can break things. Keep the backups
 and only change what you understand.
 
 ## Troubleshooting
+
+- **Startup check**: before the start screen, WQ Files checks the App Group,
+  whether it finds other apps' folders, whether its sandbox access really
+  opens a sample of them, and whether the app database identifies them. A new
+  iOS version can break any of these; instead of empty or wrong lists, WQ Files
+  then stops with what failed (Try Again, Log, Continue Anyway). Problems that
+  leave it partly usable (app names, an untested iOS version) are shown once as
+  a warning. The result is in **Log** as `health: …`.
 
 - **Apps list is empty**: the Apps screen depends on a full `fsgetpath` scan of
   the data volume. A missing/denied container parent, an unavailable inode
