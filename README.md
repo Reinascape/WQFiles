@@ -16,6 +16,9 @@ app data, the Cache Cleaner and the file browser work as on iOS 27. App icons
 don't: iOS 26 hands WQ Files only placeholder icons and doesn't let it read
 other apps' bundles, so apps show symbol tiles.
 
+WQ Files is available in English and Simplified Chinese (it follows the
+device language).
+
 ## What it opens
 
 - **App Data**: every app's data container (`Containers/Data/Application`),
@@ -231,5 +234,7 @@ concurrent writes still require supported-device validation.
   by Taj C (forcequit), GPL-3.0-or-later. This app reimplements it.
 - Container enumeration with `fsgetpath`: from
   [KAMUI](https://github.com/murk-sus/kamui-escape) by murk-sus.
+- Simplified Chinese translation: [iosrxwy](https://github.com/iosrxwy)
+  ([#38](https://github.com/kolbicz/WQFiles/pull/38)).
 
 WQ Files is GPL-3.0-or-later (see `LICENSE`).
