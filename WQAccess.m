@@ -827,6 +827,12 @@ BOOL wq_write(NSString *path, NSData *data, NSString **errorText)
 
 BOOL wq_write_from_file(NSString *path, NSString *source, NSString **errorText)
 {
+    return wq_write_from_file_with_backup(path, source, NULL, errorText);
+}
+
+BOOL wq_write_from_file_with_backup(NSString *path, NSString *source, NSString **backupUnit, NSString **errorText)
+{
+    if (backupUnit) *backupUnit = nil;
     int in = WQOpenRegularAt(AT_FDCWD, source.fileSystemRepresentation, O_RDONLY, 0);
     if (in < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
     WQMutation mutation;
@@ -850,7 +856,17 @@ BOOL wq_write_from_file(NSString *path, NSString *source, NSString **errorText)
     }
     if (!ok && !error) error = wq_errno(errno);
     close(in);
-    return wq_mutation_finish(path, &mutation, backup, ok, error, errorText, nil, nil, nil);
+    BOOL finished = wq_mutation_finish(path, &mutation, backup, ok, error, errorText, nil, nil, nil);
+    if (finished && backupUnit && backup.length) {
+        // Backups/<stamp>/<original path>: the unit is the stamp folder.
+        NSString *root = WQCanonicalVarPath(wq_backup_root());
+        NSString *canonical = WQCanonicalVarPath(backup);
+        if (root.length && [canonical hasPrefix:[root stringByAppendingString:@"/"]]) {
+            NSString *stamp = [[canonical substringFromIndex:root.length + 1] componentsSeparatedByString:@"/"].firstObject;
+            if (stamp.length) *backupUnit = [root stringByAppendingPathComponent:stamp];
+        }
+    }
+    return finished;
 }
 
 BOOL wq_create_file_from(NSString *path, NSString *source, NSString **errorText)

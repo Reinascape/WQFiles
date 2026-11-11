@@ -2038,15 +2038,28 @@ static NSString *wq_temp_work_dir(NSString *prefix)
 
 - (void)restoreBackup:(NSString *)backup to:(NSString *)original
 {
-    NSString *message = [NSString stringWithFormat:@"Write this backup back to\n%@?\n\nIf a file is there now, it is backed up first.", original];
+    NSString *message = [NSString stringWithFormat:@"Write this backup back to\n%@?\n\nIf a file is there now, it is backed up first%@.", original,
+                         wq_keep_before_restore() ? @"" : @" and that backup is deleted after a successful restore (Keep Data Before Restore is off)"];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Restore" message:message
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Restore" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *__unused a) {
         [self runIO:^BOOL(NSString **error) {
             struct stat st;
-            return wq_stat(original, &st) ? wq_write_from_file(original, backup, error)
-                                          : wq_create_file_from(original, backup, error);
+            if (!wq_stat(original, &st)) return wq_create_file_from(original, backup, error);
+            NSString *unit = nil;
+            if (!wq_write_from_file_with_backup(original, backup, &unit, error)) return NO;
+            // Keep Data Before Restore off: drop the copy of what was replaced.
+            if (!wq_keep_before_restore() && unit) {
+                NSString *discardError = nil;
+                if (wq_delete_backup(unit, &discardError))
+                    wq_log(@"restore %@: removed the before-restore backup %@ (Keep Data Before Restore is off)",
+                           original.lastPathComponent, unit.lastPathComponent);
+                else
+                    wq_log(@"restore %@: couldn't remove the before-restore backup %@ (%@)",
+                           original.lastPathComponent, unit.lastPathComponent, discardError);
+            }
+            return YES;
         } failure:@"Restore failed"];
     }]];
     [self presentViewController:alert animated:YES completion:nil];
@@ -2575,7 +2588,7 @@ static NSString *const kSystemGroupRoot = @"/private/var/containers/Shared/Syste
                "no Clear Data in Apps and no cleaning in the Cache Cleaner. Saving, moving and restoring still work.\n\n"
                "Show Item Counts: shows how many items each folder holds. Every subfolder has to be listed for this, "
                "which slows down folders with many subfolders, especially in other apps' data.\n\n"
-               "Keep Data Before Restore: restoring an app backup first backs up the app's current data, so a failed "
+               "Keep Data Before Restore: restoring an app or file backup first backs up what's there now, so a failed "
                "restore can be undone. When off, that backup is deleted once the restore succeeded.";
     return section == 1
         ? @"Overwritten and deleted files are copied to Backups first (also visible in the Files app). Long-press a backup to restore it."
