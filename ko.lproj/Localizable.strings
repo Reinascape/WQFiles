@@ -447,7 +447,7 @@
 "Magnifier" = "돋보기";
 "Tips" = "팁";
 "Siri" = "Siri";
-"Games" = "게임";
+"Games" = "Games";
 "Game Center" = "Game Center";
 "Image Playground" = "Image Playground";
 "Keynote" = "Keynote";
@@ -547,7 +547,7 @@
 "the app folders" = "앱 폴더";
 "Signing problem: no App Group" = "서명 문제: App Group 없음";
 "Signing Help" = "서명 도움말";
-"WQ Files %@ (%@) by kolbicz" = "WQ Files %@ (%@) by kolbicz";
+"WQ Files %@ (%@) by kolbicz" = "kolbicz의 WQ Files %@ (%@)";
 "SQLite Viewer" = "SQLite 뷰어";
 "SQL" = "SQL";
 "Copy" = "복사";
@@ -652,7 +652,7 @@
 "Select Backups" = "백업 선택";
 "Delete Backup…" = "백업 삭제…";
 "No App Group" = "App Group 없음";
-"WQ Files by kolbicz" = "WQ Files by kolbicz";
+"WQ Files by kolbicz" = "kolbicz의 WQ Files";
 "Sandbox escape: worse_query by @forcequitOS" = "샌드박스 이스케이프: @forcequitOS의 worse_query";
 "On iOS 26, System Data and System Groups can't be reached (worse_query covers them on iOS 27 only), and Internal Daemons need a scan of every file id: the first one can take most of an hour on a well-used device, later ones only check new files." = "iOS 26에서는 시스템 데이터 및 시스템 그룹에 접근할 수 없으며(worse_query는 iOS 27에서만 이를 지원함), 내부 데몬은 모든 파일 ID를 스캔해야 합니다. 사용량이 많은 기기에서는 첫 스캔에 1시간 가까이 걸릴 수 있으며, 이후 스캔은 새 파일만 확인합니다.";
 "Overwritten and deleted files are copied to Backups first (also visible in the Files app). Long-press a backup to restore it." = "덮어쓰거나 삭제된 파일은 먼저 ‘Backups’로 복사됩니다(파일 앱에서도 확인 가능). 백업을 길게 누르면 복원할 수 있습니다.";
