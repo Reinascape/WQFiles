@@ -170,13 +170,12 @@ void wq_share_folder(UIViewController *host, NSString *dir, NSString *zipName, U
     }
     WQSharePreparation *preparation = [WQSharePreparation new];
     preparation.host = host;
-    UIAlertController *hud = [UIAlertController alertControllerWithTitle:@"Preparing…"
-        message:@"Compressing the folder" preferredStyle:UIAlertControllerStyleAlert];
-    [hud addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction *__unused action) {
+    UIAlertController *hud = wq_alert_controller(@"Preparing…", @"Compressing the folder", UIAlertControllerStyleAlert);
+    [hud addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, ^(UIAlertAction *__unused action) {
         preparation.cancelled = YES;
         objc_setAssociatedObject(host, &kWQSharePreparationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [host dismissViewControllerAnimated:YES completion:nil];
-    }]];
+    })];
     preparation.hud = hud;
     objc_setAssociatedObject(host, &kWQSharePreparationKey, preparation, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [host presentViewController:hud animated:YES completion:nil];

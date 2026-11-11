@@ -5,6 +5,7 @@
 //
 
 #import "WQLaunchServices.h"
+#import "WQLocalization.h"
 #import "WQAccess.h"
 #import <stdlib.h>
 #import <string.h>
@@ -799,7 +800,7 @@ NSString *wq_display_name(NSString *bundleID)
     if (!bundleID) return nil;
     @synchronized (wq_ls_lock()) {
         NSString *name = wq_known_name_locked(bundleID);
-        if (name) return name;
+        if (name) return WQLocalized(name);
         // Unknown id: use the closest parent app (com.apple.news.widget -> News).
         NSArray *parts = [bundleID componentsSeparatedByString:@"."];
         for (NSInteger n = (NSInteger)parts.count - 1; n >= 2; n--) {
@@ -807,7 +808,8 @@ NSString *wq_display_name(NSString *bundleID)
             NSString *parent = wq_known_name_locked(prefix);
             if (parent) {
                 NSString *suffix = wq_safe_name(parts.lastObject);
-                return suffix.length ? [NSString stringWithFormat:@"%@ \u2013 %@", parent, suffix] : parent;
+                NSString *display = suffix.length ? [NSString stringWithFormat:@"%@ \u2013 %@", parent, suffix] : parent;
+                return WQLocalized(display);
             }
         }
         return nil;
