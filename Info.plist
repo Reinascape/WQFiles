@@ -44,6 +44,7 @@
 		<string>ar</string>
 		<string>it</string>
 		<string>es</string>
+		<string>ko</string>
 	</array>
 	<key>CFBundleName</key>
 	<string>WQFiles</string>
