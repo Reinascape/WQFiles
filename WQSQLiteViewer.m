@@ -731,6 +731,7 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
 @implementation WQSQLiteQueryViewController {
     WQSQLiteSnapshot *_snapshot;
     UITextView *_textView;
+    BOOL _running;
 }
 
 - (instancetype)initWithSnapshot:(WQSQLiteSnapshot *)snapshot
@@ -769,77 +770,128 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
     [_textView becomeFirstResponder];
 }
 
-- (BOOL)wq_needsLeaveConfirmation { return NO; }
+- (BOOL)wq_needsLeaveConfirmation { return _running; }
 - (void)confirmLeaveThen:(void (^)(void))proceed
 {
+    if (_running) return;
     if (_snapshot.owner) [_snapshot.owner confirmLeaveThen:proceed];
     else proceed();
 }
 
-// While editing: statements that change the copy run together (all or
-// nothing, in a savepoint); the result is the number of rows changed.
-- (BOOL)runChanges:(NSString *)sql
+static int wq_sqlite_cancel_query(void *context)
 {
-    WQSQLiteSnapshot *snapshot = _snapshot;
-    __block BOOL writes = NO;
-    __block NSString *error = nil;
-    __block long long changed = 0;
-    dispatch_sync(snapshot.queue, ^{
-        // Does any statement write? Walk them without running anything.
-        const char *cursor = sql.UTF8String;
-        while (cursor && *cursor) {
-            sqlite3_stmt *stmt = NULL;
-            const char *tail = NULL;
-            if (sqlite3_prepare_v2(snapshot.db, cursor, -1, &stmt, &tail) != SQLITE_OK) { error = @(sqlite3_errmsg(snapshot.db)); break; }
-            if (stmt && !sqlite3_stmt_readonly(stmt)) writes = YES;
-            sqlite3_finalize(stmt);
-            cursor = tail;
-        }
-        if (error || !writes) return;
-        long long before = sqlite3_total_changes64(snapshot.db);
-        char *message = NULL;
-        sqlite3_exec(snapshot.db, "SAVEPOINT wq_edit", NULL, NULL, NULL);
-        if (sqlite3_exec(snapshot.db, sql.UTF8String, NULL, NULL, &message) != SQLITE_OK) {
-            error = message ? @(message) : @(sqlite3_errmsg(snapshot.db));
-            sqlite3_free(message);
-            sqlite3_exec(snapshot.db, "ROLLBACK TO wq_edit", NULL, NULL, NULL);
-        }
-        sqlite3_exec(snapshot.db, "RELEASE wq_edit", NULL, NULL, NULL);
-        changed = sqlite3_total_changes64(snapshot.db) - before;
-    });
-    if (error) { wq_alert(self, @"Cannot run", error); return YES; }
-    if (!writes) return NO;
-    [snapshot changed];
-    wq_alert(self, @"Done", WQLocalizedFormat(@"%lld rows changed in the copy. Save on the database screen writes them to the app.", changed));
-    return YES;
+    return [(__bridge WQScanCancellation *)context isCancelled];
+}
+
+// Keep the script inside the savepoint owned by this screen.
+static int wq_sqlite_edit_authorizer(void *__unused context, int action, const char *__unused first,
+                                    const char *__unused second, const char *__unused database,
+                                    const char *__unused trigger)
+{
+    switch (action) {
+        case SQLITE_TRANSACTION:
+        case SQLITE_SAVEPOINT:
+        case SQLITE_ATTACH:
+        case SQLITE_DETACH:
+            return SQLITE_DENY;
+        default:
+            return SQLITE_OK;
+    }
 }
 
 - (void)run
 {
+    if (_running) return;
     NSString *sql = [_textView.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     while ([sql hasSuffix:@";"]) sql = [[sql substringToIndex:sql.length - 1] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (!sql.length) return;
-    if (_snapshot.editing && [self runChanges:sql]) return;
-    // Only a single read-only statement: checked before anything runs.
+
     WQSQLiteSnapshot *snapshot = _snapshot;
-    __block NSString *error = nil;
-    dispatch_sync(snapshot.queue, ^{
-        sqlite3_stmt *stmt = NULL;
-        const char *tail = NULL;
-        if (sqlite3_prepare_v2(snapshot.db, sql.UTF8String, -1, &stmt, &tail) != SQLITE_OK) error = @(sqlite3_errmsg(snapshot.db));
-        else if (!stmt) error = WQLocalized(@"Nothing to run.");
-        else if (!sqlite3_stmt_readonly(stmt)) error = WQLocalized(@"Only read-only statements (SELECT, read-only PRAGMA, EXPLAIN) can run here. Tap Edit on the database screen to change it.");
-        else if (tail && *tail) {
-            NSString *rest = [@(tail) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-            if (rest.length) error = WQLocalized(@"Run one statement at a time.");
+    BOOL editing = snapshot.editing;
+    WQScanCancellation *cancellation = [WQScanCancellation new];
+    UIAlertController *progress = wq_alert_controller(@"SQL", @"Starting…", UIAlertControllerStyleAlert);
+    [progress addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, ^(UIAlertAction *__unused a) {
+        [cancellation cancel];
+    })];
+    _running = YES;
+    self.navigationItem.rightBarButtonItem.enabled = NO;
+    [self presentViewController:progress animated:YES completion:nil];
+    dispatch_async(snapshot.queue, ^{
+        sqlite3 *db = snapshot.db;
+        NSString *error = nil;
+        BOOL writes = NO, returnsRows = NO;
+        NSUInteger statements = 0;
+        long long changed = 0;
+        sqlite3_progress_handler(db, 1000, wq_sqlite_cancel_query, (__bridge void *)cancellation);
+        const char *cursor = sql.UTF8String;
+        while (*cursor && !cancellation.isCancelled) {
+            sqlite3_stmt *stmt = NULL;
+            const char *tail = NULL;
+            int rc = sqlite3_prepare_v2(db, cursor, -1, &stmt, &tail);
+            if (rc == SQLITE_OK && stmt) {
+                statements++;
+                writes |= !sqlite3_stmt_readonly(stmt);
+                returnsRows = sqlite3_column_count(stmt) > 0;
+            }
+            sqlite3_finalize(stmt);
+            if (rc != SQLITE_OK) { error = @(sqlite3_errmsg(db)); break; }
+            cursor = tail;
         }
-        else if (sqlite3_column_count(stmt) == 0) error = WQLocalized(@"This statement returns no rows.");
-        sqlite3_finalize(stmt);
+
+        BOOL committed = NO;
+        if (!error && !cancellation.isCancelled) {
+            if (writes && !editing) {
+                error = WQLocalized(@"Only read-only statements (SELECT, read-only PRAGMA, EXPLAIN) can run here. Tap Edit on the database screen to change it.");
+            } else if (writes) {
+                long long before = sqlite3_total_changes64(db);
+                int rc = sqlite3_exec(db, "SAVEPOINT wq_edit", NULL, NULL, NULL);
+                if (rc == SQLITE_OK) {
+                    sqlite3_set_authorizer(db, wq_sqlite_edit_authorizer, NULL);
+                    rc = sqlite3_exec(db, sql.UTF8String, NULL, NULL, NULL);
+                    sqlite3_set_authorizer(db, NULL, NULL);
+                    if (rc != SQLITE_OK) error = @(sqlite3_errmsg(db));
+                    sqlite3_progress_handler(db, 0, NULL, NULL);
+                    if (rc == SQLITE_OK && !cancellation.isCancelled) {
+                        committed = sqlite3_exec(db, "RELEASE wq_edit", NULL, NULL, NULL) == SQLITE_OK;
+                        if (!committed) error = @(sqlite3_errmsg(db));
+                    }
+                    if (!committed) {
+                        sqlite3_exec(db, "ROLLBACK TO wq_edit", NULL, NULL, NULL);
+                        sqlite3_exec(db, "RELEASE wq_edit", NULL, NULL, NULL);
+                    }
+                    changed = sqlite3_total_changes64(db) - before;
+                } else {
+                    error = @(sqlite3_errmsg(db));
+                }
+            } else if (statements == 0) {
+                error = WQLocalized(@"Nothing to run.");
+            } else if (statements > 1) {
+                error = WQLocalized(@"Run one statement at a time.");
+            } else if (!returnsRows) {
+                error = WQLocalized(@"This statement returns no rows.");
+            }
+        }
+        sqlite3_progress_handler(db, 0, NULL, NULL);
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (committed) [snapshot changed];
+            void (^finish)(void) = ^{
+                self->_running = NO;
+                self.navigationItem.rightBarButtonItem.enabled = YES;
+                if (cancellation.isCancelled && !committed) return;
+                if (error) { wq_alert(self, @"Cannot run", error); return; }
+                if (committed) {
+                    wq_alert(self, @"Done", WQLocalizedFormat(@"%lld rows changed in the copy. Save on the database screen writes them to the app.", changed));
+                    return;
+                }
+                WQSQLiteRowsViewController *rows = [[WQSQLiteRowsViewController alloc]
+                    initWithSnapshot:snapshot sql:sql title:WQLocalizedNullable(@"Result") exportName:@"query" limit:kWQSQLiteQueryLimit];
+                [self.navigationController pushViewController:rows animated:YES];
+            };
+            if (self.presentedViewController == progress) [progress dismissViewControllerAnimated:YES completion:finish];
+            else finish();
+        });
     });
-    if (error) { wq_alert(self, @"Cannot run", error); return; }
-    WQSQLiteRowsViewController *rows = [[WQSQLiteRowsViewController alloc] initWithSnapshot:snapshot sql:sql title:WQLocalizedNullable(@"Result")
-                                                                                 exportName:@"query" limit:kWQSQLiteQueryLimit];
-    [self.navigationController pushViewController:rows animated:YES];
 }
 
 @end
