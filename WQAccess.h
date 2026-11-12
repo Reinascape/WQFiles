@@ -62,6 +62,13 @@ BOOL wq_write_from_file(NSString *path, NSString *source, NSString *_Nullable *_
 // holding the previous contents, so a caller may remove it after success.
 BOOL wq_write_from_file_with_backup(NSString *path, NSString *source, NSString *_Nullable *_Nullable backupUnit,
                                     NSString *_Nullable *_Nullable errorText);
+// Stores the local file `source` in Backups as the previous version of
+// `originalPath` (nothing at `originalPath` is touched), inside the unit
+// *backupUnit, or a new unit when *backupUnit is nil. For saves whose correct
+// "previous version" is not one file's raw bytes: an SQLite database with its
+// -wal checkpointed into it, so restoring the unit loses no committed rows.
+BOOL wq_backup_local_copy(NSString *originalPath, NSString *source, NSString *_Nullable *_Nonnull backupUnit,
+                          NSString *_Nullable *_Nullable errorText);
 BOOL wq_create_file_from(NSString *path, NSString *source, NSString *_Nullable *_Nullable errorText);
 // Streams a regular file into a staged local path, then replaces the destination.
 // Same-file aliases are refused; failed streaming leaves the destination intact.

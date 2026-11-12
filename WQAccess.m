@@ -911,6 +911,32 @@ BOOL wq_write_from_file_with_backup(NSString *path, NSString *source, NSString *
     return finished;
 }
 
+BOOL wq_backup_local_copy(NSString *originalPath, NSString *source, NSString **backupUnit, NSString **errorText)
+{
+    NSString *root = WQCanonicalVarPath(wq_backup_root());
+    NSString *stamp = nil;
+    if (*backupUnit) {
+        NSString *unit = WQCanonicalVarPath(*backupUnit);
+        stamp = unit.lastPathComponent;
+        if (!root.length || ![unit isEqualToString:[root stringByAppendingPathComponent:stamp]] || !WQBackupStampValid(stamp)) {
+            if (errorText) *errorText = WQLocalized(@"The path is invalid or belongs to backup storage.");
+            return NO;
+        }
+    } else {
+        stamp = wq_new_backup_stamp();
+        if (!stamp || !root.length) {
+            if (errorText) *errorText = WQLocalized(@"Cannot allocate a backup name.");
+            return NO;
+        }
+    }
+    int in = WQOpenRegularAt(AT_FDCWD, source.fileSystemRepresentation, O_RDONLY, 0);
+    if (in < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
+    BOOL ok = wq_backup_fd(originalPath, in, stamp, NULL, errorText);
+    close(in);
+    if (ok) *backupUnit = [root stringByAppendingPathComponent:stamp];
+    return ok;
+}
+
 BOOL wq_create_file_from(NSString *path, NSString *source, NSString **errorText)
 {
     if (wq_is_backup_storage_path(path)) {
