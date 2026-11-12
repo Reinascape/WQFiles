@@ -15,6 +15,41 @@ if [[ "${WQ_ASAN:-0}" == "1" ]]; then
     export ASAN_OPTIONS="detect_leaks=0"
 fi
 
+# Every test program runs with a time limit (seconds; WQ_TEST_TIMEOUT
+# overrides), so one hung fixture can't stall the suite or build preflight.
+TEST_TIMEOUT=${WQ_TEST_TIMEOUT:-900}
+
+# Runs "$@" and kills it after $1 seconds. Exit status 124 means it timed out.
+run_bounded() {
+    local limit=$1
+    shift
+    local fired
+    fired=$(mktemp "${TMPDIR:-/tmp}/wq-timeout.XXXXXX")
+    rm -f -- "$fired"
+    "$@" &
+    local pid=$!
+    (
+        sleep "$limit" &
+        local sleeper=$!
+        trap 'kill "$sleeper" 2>/dev/null; exit 0' TERM
+        wait "$sleeper" 2>/dev/null || exit 0
+        : > "$fired"
+        kill -TERM "$pid" 2>/dev/null || exit 0
+        sleep 5
+        kill -KILL "$pid" 2>/dev/null || true
+    ) &
+    local watchdog=$!
+    local status=0
+    wait "$pid" 2>/dev/null || status=$?
+    kill "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || true
+    if [[ -e "$fired" ]]; then
+        rm -f -- "$fired"
+        return 124
+    fi
+    return "$status"
+}
+
 compile_run() {
     local name=$1
     shift
@@ -25,10 +60,15 @@ compile_run() {
             cat "$OUT/$name-build.log" >&2
             return 1
         }
-    "$OUT/$name" > "$OUT/$name-run.log" 2>&1 || {
+    local status=0
+    run_bounded "$TEST_TIMEOUT" "$OUT/$name" > "$OUT/$name-run.log" 2>&1 || status=$?
+    if [[ $status -ne 0 ]]; then
         cat "$OUT/$name-run.log" >&2
+        if [[ $status -eq 124 ]]; then
+            echo "TIMEOUT: $name did not finish within ${TEST_TIMEOUT}s (last phase above)" >&2
+        fi
         return 1
-    }
+    fi
     tail -3 "$OUT/$name-run.log"
 }
 
@@ -51,10 +91,13 @@ compile_run WQTrashTests WQLocalization.m WQCore.m tests/WQTrashTests.m
 compile_run WQLaunchServicesTests -DWQ_LS_TESTING WQLaunchServices.m WQLocalization.m tests/WQLaunchServicesTests.m
 
 printf '\n== Python release and static UI checks ==\n'
-python3 -m unittest discover -s tests -p 'test_*.py' -v > "$OUT/python-tests.log" 2>&1 || {
+python_status=0
+run_bounded "$TEST_TIMEOUT" python3 -m unittest discover -s tests -p 'test_*.py' -v > "$OUT/python-tests.log" 2>&1 || python_status=$?
+if [[ $python_status -ne 0 ]]; then
     cat "$OUT/python-tests.log" >&2
+    [[ $python_status -eq 124 ]] && echo "TIMEOUT: Python tests did not finish within ${TEST_TIMEOUT}s" >&2
     exit 1
-}
+fi
 tail -5 "$OUT/python-tests.log"
 python3 tests/browser_ui_regressions.py | tee "$OUT/browser-ui.log"
 
