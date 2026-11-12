@@ -1,4 +1,4 @@
-/* Russian localization. */
+/* Russian localization. English source text is the key. */
 "Restore to Original Location" = "Восстановить в исходное расположение";
 "Restore Backup (%@)" = "Восстановить резервную копию (%@)";
 "Restore a Backup… (%lu)" = "Восстановить резервную копию… (%lu)";
@@ -447,7 +447,7 @@
 "Magnifier" = "Лупа";
 "Tips" = "Советы";
 "Siri" = "Siri";
-"Games" = "Игры";
+"Games" = "Games";
 "Game Center" = "Game Center";
 "Image Playground" = "Image Playground";
 "Keynote" = "Keynote";
