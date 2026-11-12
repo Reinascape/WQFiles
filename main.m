@@ -692,6 +692,16 @@ static NSString *wq_folder_date_text(NSDate *date)
 // One sort order for all folders, remembered. Each key starts in its natural
 // direction (A–Z, newest first, largest first); picking it again reverses it.
 typedef NS_ENUM(NSInteger, WQSortKey) { WQSortName, WQSortModified, WQSortCreated, WQSortSize };
+// Container lists (App Data, App Groups…): 0 all, 1 Apple, 2 other, 3 backed up.
+static NSString *const kWQContainerFilterPref = @"WQContainerFilter";
+
+static BOOL wq_id_is_apple(NSString *identifier)
+{
+    for (NSString *prefix in @[@"com.apple.", @"group.com.apple.", @"systemgroup.com.apple."])
+        if ([identifier hasPrefix:prefix]) return YES;
+    return NO;
+}
+
 static NSString *const kWQSortKeyPref = @"WQFolderSortKey";
 static NSString *const kWQSortAscendingPref = @"WQFolderSortAscending";
 static NSString *const kWQFoldersFirstPref = @"WQFolderSortFoldersFirst";
@@ -893,7 +903,25 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         UIMenu *sort = [UIMenu menuWithTitle:WQLocalizedNullable(@"Sort By") image:[UIImage systemImageNamed:@"arrow.up.arrow.down"] identifier:nil options:0
                                     children:[sortActions arrayByAddingObject:order]];
         sort.subtitle = WQLocalizedFormat(@"%@, %@", WQLocalizedNullable(titles[(NSUInteger)current]), wq_sort_direction_text(current, ascending));
-        completion(@[sort]);
+        WQDirViewController *strongSelf = weakSelf;
+        if (!strongSelf || !strongSelf->_labels) { completion(@[sort]); return; }
+        // Container lists filter like Apps (issue #44).
+        NSInteger shown = strongSelf.containerFilter;
+        NSArray *filterTitles = @[@"All", @"Apple", @"Other", @"Backed Up"];
+        NSMutableArray *filters = [NSMutableArray new];
+        for (NSInteger i = 0; i < (NSInteger)filterTitles.count; i++) {
+            if (i == 3 && !strongSelf.offersBackedUpFilter) continue;
+            UIAction *f = [UIAction actionWithTitle:WQLocalizedNullable(filterTitles[(NSUInteger)i]) image:nil identifier:nil handler:^(UIAction *__unused a) {
+                [NSUserDefaults.standardUserDefaults setInteger:i forKey:kWQContainerFilterPref];
+                [weakSelf resortAfterChange];
+            }];
+            f.state = i == shown ? UIMenuElementStateOn : UIMenuElementStateOff;
+            [filters addObject:f];
+        }
+        UIMenu *show = [UIMenu menuWithTitle:WQLocalizedNullable(@"Show") image:[UIImage systemImageNamed:@"line.3.horizontal.decrease.circle"]
+                                  identifier:nil options:0 children:filters];
+        show.subtitle = WQLocalizedNullable(filterTitles[(NSUInteger)shown]);
+        completion(@[sort, show]);
     }]];
     _menuItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"]
                                                  menu:[UIMenu menuWithChildren:menuItems]];
@@ -1011,9 +1039,39 @@ static NSString *wq_temp_work_dir(NSString *prefix)
 }
 
 // App name, bundle or group ID, or file name; case and accents ignored.
+- (BOOL)offersBackedUpFilter { return [_path.lastPathComponent isEqualToString:@"Application"]; }
+
+- (NSInteger)containerFilter
+{
+    if (!_labels) return 0;
+    NSInteger filter = [NSUserDefaults.standardUserDefaults integerForKey:kWQContainerFilterPref];
+    if (filter < 0 || filter > 3 || (filter == 3 && !self.offersBackedUpFilter)) return 0;
+    return filter;
+}
+
 - (void)applyFilter
 {
     NSArray<WQItem *> *shown = _all ?: @[];
+    NSInteger filter = self.containerFilter;
+    if (filter) {
+        NSSet *backedUp = nil;
+        if (filter == 3) {
+            NSMutableSet *ids = [NSMutableSet new];
+            NSString *root = wq_app_backup_root();
+            for (NSString *bid in [NSFileManager.defaultManager contentsOfDirectoryAtPath:root error:nil]) {
+                if ([bid hasPrefix:@"."]) continue;
+                NSArray *units = [NSFileManager.defaultManager contentsOfDirectoryAtPath:[root stringByAppendingPathComponent:bid] error:nil];
+                for (NSString *u in units) if (![u hasPrefix:@"."]) { [ids addObject:bid]; break; }
+            }
+            backedUp = ids;
+        }
+        shown = [shown filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(WQItem *item, NSDictionary *__unused b) {
+            NSString *identifier = item.bundleID ?: item.label ?: @"";
+            if (filter == 1) return wq_id_is_apple(identifier);
+            if (filter == 2) return !wq_id_is_apple(identifier);
+            return [backedUp containsObject:identifier];
+        }]];
+    }
     if (_query) {
         NSStringCompareOptions opts = NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch;
         NSString *q = _query;
@@ -1035,6 +1093,8 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     }
     _indexTitles = titles.count > 1 ? titles : nil;
     _indexRows = rows;
+    // A filled menu button shows that a Show filter hides some containers.
+    _menuItem.image = [UIImage systemImageNamed:filter ? @"ellipsis.circle.fill" : @"ellipsis.circle"];
 }
 
 - (NSArray<NSString *> *)sectionIndexTitlesForTableView:(UITableView *)tableView

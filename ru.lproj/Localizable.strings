@@ -860,3 +860,6 @@
 "Reset" = "Сбросить";
 "Reset failed" = "Не удалось сбросить";
 "The App Group is missing." = "App Group отсутствует.";
+"All" = "Все";
+"Apple" = "Apple";
+"Other" = "Другие";

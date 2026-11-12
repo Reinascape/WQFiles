@@ -860,3 +860,6 @@
 "Reset" = "재설정";
 "Reset failed" = "재설정 실패";
 "The App Group is missing." = "App Group이 없습니다.";
+"All" = "전체";
+"Apple" = "Apple";
+"Other" = "기타";

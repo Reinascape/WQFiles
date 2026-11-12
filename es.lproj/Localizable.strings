@@ -860,3 +860,6 @@
 "Reset" = "Restablecer";
 "Reset failed" = "Error al restablecer";
 "The App Group is missing." = "Falta el App Group.";
+"All" = "Todas";
+"Apple" = "Apple";
+"Other" = "Otras";
