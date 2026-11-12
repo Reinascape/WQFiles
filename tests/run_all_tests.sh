@@ -90,6 +90,13 @@ compile_run WQSQLiteSaveTests WQLocalization.m WQCore.m tests/WQSQLiteSaveTests.
 compile_run WQTrashTests WQLocalization.m WQCore.m tests/WQTrashTests.m
 compile_run WQLaunchServicesTests -DWQ_LS_TESTING WQLaunchServices.m WQLocalization.m tests/WQLaunchServicesTests.m
 
+printf '\n== WQLocalizationTests (runtime, all languages) ==\n'
+tests/run_localization_tests.sh > "$OUT/localization-runtime.log" 2>&1 || {
+    cat "$OUT/localization-runtime.log" >&2
+    exit 1
+}
+tail -1 "$OUT/localization-runtime.log"
+
 printf '\n== Python release and static UI checks ==\n'
 python_status=0
 run_bounded "$TEST_TIMEOUT" python3 -m unittest discover -s tests -p 'test_*.py' -v > "$OUT/python-tests.log" 2>&1 || python_status=$?
@@ -122,5 +129,5 @@ else
 fi
 plutil -lint Info.plist entitlements.plist | tee "$OUT/plist-lint.log"
 bash -n build.sh tests/run_all_tests.sh tests/run_tests.sh tests/run_apps_tests.sh \
-    tests/run_access_safety_tests.sh tests/run_hex_helpers_tests.sh tests/run_plist_tests.sh tests/run_launchservices_tests.sh
+    tests/run_access_safety_tests.sh tests/run_hex_helpers_tests.sh tests/run_plist_tests.sh tests/run_launchservices_tests.sh tests/run_localization_tests.sh
 printf '\nAll requested regression suites passed. Logs retained in: %s\n' "$OUT"
