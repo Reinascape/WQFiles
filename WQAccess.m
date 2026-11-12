@@ -1741,11 +1741,13 @@ static void wq_shared_scan_setup(void)
 }
 
 static void wq_scan_slots_clear(void);
+static void wq_label_caches_invalidate(void);
 
 void wq_enumerate_invalidate(void)
 {
     wq_shared_scan_setup();
     @synchronized (gSharedScanGuard) { wq_scan_slots_clear(); }
+    wq_label_caches_invalidate();
 }
 
 
@@ -1766,7 +1768,44 @@ static NSString *wq_sample_area(NSString *path)
 
 // LaunchServices API: each app's and plug-in's data container, where the
 // system lets this app ask (it refuses on iOS 27).
+// Path -> bundle id caches (this API's and the container manager's) are tied
+// to the folder object they were made for: each entry keeps the (device,
+// inode) seen when it was recorded, or on its first use when the folder
+// couldn't be checked then, and a folder with another identity doesn't get
+// the cached id. An explicit refresh drops both caches.
 static NSDictionary<NSString *, NSString *> *gLSAPILabels;
+static NSMutableDictionary<NSString *, NSArray<NSNumber *> *> *gLSAPIIdentities;
+static _Atomic NSUInteger gWQLabelGeneration;
+
+typedef NS_ENUM(int, WQLabelIdentity) { WQLabelIdentityUnknown, WQLabelIdentityKnown, WQLabelIdentityGone };
+
+static WQLabelIdentity wq_label_identity(NSString *path, NSArray<NSNumber *> **identity)
+{
+    *identity = nil;
+    struct stat st;
+    if (lstat(path.fileSystemRepresentation, &st) != 0) return errno == ENOENT ? WQLabelIdentityGone : WQLabelIdentityUnknown;
+    if (!S_ISDIR(st.st_mode)) return WQLabelIdentityGone;
+    *identity = @[@((uint64_t)st.st_dev), @((uint64_t)st.st_ino)];
+    return WQLabelIdentityKnown;
+}
+
+// Whether a cached id for key may be used for the folder as it is now.
+// Caller holds the lock of identities.
+static BOOL wq_label_identity_matches(NSMutableDictionary<NSString *, NSArray<NSNumber *> *> *identities, NSString *key,
+                                      WQLabelIdentity state, NSArray<NSNumber *> *current)
+{
+    if (state == WQLabelIdentityGone) return NO;
+    if (state == WQLabelIdentityUnknown) return YES;   // can't be checked: as before
+    NSArray *recorded = identities[key];
+    if (!recorded) { identities[key] = current; return YES; }
+    return [recorded isEqualToArray:current];
+}
+
+static void wq_label_caches_invalidate(void)
+{
+    @synchronized (NSNull.null) { gLSAPILabels = nil; gLSAPIIdentities = nil; }
+    atomic_fetch_add(&gWQLabelGeneration, 1);
+}
 
 static NSDictionary<NSString *, NSArray<NSString *> *> *wq_lsapi_list_containers(NSArray<NSString *> *roots, NSString **summary)
 {
@@ -1809,7 +1848,12 @@ static NSDictionary<NSString *, NSArray<NSString *> *> *wq_lsapi_list_containers
     *summary = [NSString stringWithFormat:@"LaunchServices API: %lu apps and %lu plug-ins, %lu data containers (%lu apps, %lu extensions)",
                 (unsigned long)proxies, (unsigned long)plugins, (unsigned long)labels.count,
                 (unsigned long)[result[roots[0]] count], (unsigned long)[result[roots[1]] count]];
-    @synchronized (NSNull.null) { gLSAPILabels = [labels copy]; }
+    NSMutableDictionary *identities = [NSMutableDictionary new];
+    for (NSString *path in labels) {
+        NSArray<NSNumber *> *identity = nil;
+        if (wq_label_identity(path, &identity) == WQLabelIdentityKnown) identities[path] = identity;
+    }
+    @synchronized (NSNull.null) { gLSAPILabels = [labels copy]; gLSAPIIdentities = identities; }
     return result;
 }
 
@@ -2829,17 +2873,23 @@ BOOL wq_copy_tree_new(NSString *srcDir, NSString *dstDir, BOOL (^cancelled)(void
 // used by terminal_worse (GPL-3.0); no part-domain traversal is involved. The UUID xattr and the root-only
 // metadata plist are the fast paths; this query is the fallback for devices
 // or containers where either is unavailable. Paths and identifiers stay in a
-// short-lived cache because labels are requested for every row.
-static NSDictionary<NSString *, NSString *> *wq_container_identifier_map(void)
+// short-lived cache because labels are requested for every row; it is
+// rebuilt after an explicit refresh and its entries are identity-bound like
+// the LaunchServices API labels.
+static NSString *wq_container_identifier_lookup(NSString *key, WQLabelIdentity state, NSArray<NSNumber *> *current)
 {
     static NSObject *lock;
     static NSDictionary<NSString *, NSString *> *cached;
+    static NSMutableDictionary<NSString *, NSArray<NSNumber *> *> *identities;
     static NSTimeInterval cachedAt;
+    static NSUInteger cachedGeneration;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ lock = [NSObject new]; });
     @synchronized (lock) {
         NSTimeInterval now = NSDate.date.timeIntervalSinceReferenceDate;
-        if (cached && now - cachedAt < 60) return cached;
+        NSUInteger generation = atomic_load(&gWQLabelGeneration);
+        if (!cached || now - cachedAt >= 60 || generation != cachedGeneration) {
+        identities = [NSMutableDictionary new];
 
         NSMutableDictionary<NSString *, NSString *> *map = [NSMutableDictionary new];
         void *mgr = dlopen("/usr/lib/system/libsystem_containermanager.dylib", RTLD_NOW | RTLD_LOCAL);
@@ -2865,8 +2915,12 @@ static NSDictionary<NSString *, NSString *> *wq_container_identifier_map(void)
                         NSString *p = [NSString stringWithUTF8String:path];
                         NSString *v = [NSString stringWithUTF8String:ident];
                         if (!p.length || !v.length) return true;
-                        NSString *key = WQCanonicalVarPath(p);
-                        if (key.length && !map[key]) map[key] = v;
+                        NSString *pathKey = WQCanonicalVarPath(p);
+                        if (pathKey.length && !map[pathKey]) {
+                            map[pathKey] = v;
+                            NSArray<NSNumber *> *identity = nil;
+                            if (wq_label_identity(pathKey, &identity) == WQLabelIdentityKnown) identities[pathKey] = identity;
+                        }
                         return true;
                     });
                     freeQuery(query);
@@ -2876,7 +2930,15 @@ static NSDictionary<NSString *, NSString *> *wq_container_identifier_map(void)
         }
         cached = map;
         cachedAt = now;
-        return cached;
+        cachedGeneration = generation;
+        }
+        NSString *value = cached[key];
+        if (!value.length) return nil;
+        if (!wq_label_identity_matches(identities, key, state, current)) {
+            wq_log(@"label: container manager id for %@ belongs to an earlier folder; not used", key.lastPathComponent);
+            return nil;
+        }
+        return value;
     }
 }
 
@@ -2905,11 +2967,25 @@ NSString *wq_container_label(NSString *dir)
     }
     // Prefer the container-manager query over the metadata plist: it needs no
     // file permission and can also label containers whose plist is root-only.
+    NSArray<NSNumber *> *identity = nil;
+    WQLabelIdentity state = wq_label_identity(dir, &identity);
     NSString *fromAPI = nil;
-    @synchronized (NSNull.null) { fromAPI = gLSAPILabels[wq_norm(dir)]; }
-    if (fromAPI.length) return fromAPI;
-    NSString *queried = wq_container_identifier_map()[WQCanonicalVarPath(dir)];
-    if (queried.length) return queried;
+    @synchronized (NSNull.null) {
+        NSString *key = wq_norm(dir);
+        fromAPI = gLSAPILabels[key];
+        if (fromAPI.length && gLSAPIIdentities && !wq_label_identity_matches(gLSAPIIdentities, key, state, identity)) {
+            wq_log(@"label: LaunchServices API id for %@ belongs to an earlier folder; not used", key.lastPathComponent);
+            fromAPI = nil;
+        }
+    }
+    NSString *queried = wq_container_identifier_lookup(WQCanonicalVarPath(dir), state, identity);
+    // Two caches that disagree about the same folder: trust neither.
+    if (fromAPI.length && queried.length && ![fromAPI isEqualToString:queried]) {
+        wq_log(@"label: cached ids for %@ disagree (%@, %@); asking LaunchServices", dir.lastPathComponent, fromAPI, queried);
+    } else {
+        if (fromAPI.length) return fromAPI;
+        if (queried.length) return queried;
+    }
     // The LaunchServices database maps app and extension data containers to
     // bundle ids (set by the app; this file doesn't depend on that module).
     NSString *resolved = gContainerLabelResolver ? gContainerLabelResolver(WQCanonicalVarPath(dir)) : nil;

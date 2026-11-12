@@ -122,6 +122,39 @@ static void testFullScanCoordinator(void)
     wq_full_scan_release();
 }
 
+// API labels are bound to the folder they were recorded for and dropped on refresh.
+static void testLabelCacheIdentity(void)
+{
+    NSString *base = [WQCanonicalVarPath(NSTemporaryDirectory().stringByResolvingSymlinksInPath) stringByAppendingPathComponent:
+                      [@"WQAccessScanTests-" stringByAppendingString:NSUUID.UUID.UUIDString]];
+    NSString *dir = [base stringByAppendingPathComponent:@"4CE791DB-6B04-4A39-8F59-AF32BA61D494"];
+    check([NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil], @"create label fixture");
+    NSString *key = wq_norm(dir);
+    NSArray<NSNumber *> *identity = nil;
+    check(wq_label_identity(dir, &identity) == WQLabelIdentityKnown, @"fixture identity readable");
+    @synchronized (NSNull.null) {
+        gLSAPILabels = @{ key: @"com.example.old" };
+        gLSAPIIdentities = [@{ key: identity } mutableCopy];
+    }
+    check([wq_container_label(dir) isEqualToString:@"com.example.old"], @"cached id used for the same folder");
+    // Path reuse: same path, another folder object.
+    NSString *aside = [base stringByAppendingPathComponent:@"aside"];
+    check(rename(dir.fileSystemRepresentation, aside.fileSystemRepresentation) == 0 &&
+          mkdir(dir.fileSystemRepresentation, 0700) == 0, @"replace folder at the same path");
+    check(wq_container_label(dir) == nil, @"cached id rejected for a replaced folder");
+    check(rmdir(dir.fileSystemRepresentation) == 0, @"remove replacement");
+    check(wq_container_label(dir) == nil, @"cached id rejected for a missing folder");
+    check(rename(aside.fileSystemRepresentation, dir.fileSystemRepresentation) == 0, @"restore original folder");
+    // Entries recorded without an identity bind it on first use.
+    @synchronized (NSNull.null) { gLSAPIIdentities = [NSMutableDictionary new]; }
+    check([wq_container_label(dir) isEqualToString:@"com.example.old"], @"unbound entry binds on first use");
+    @synchronized (NSNull.null) { check([gLSAPIIdentities[key] isEqualToArray:identity], @"first use recorded the identity"); }
+    wq_enumerate_invalidate();
+    @synchronized (NSNull.null) { check(gLSAPILabels == nil && gLSAPIIdentities == nil, @"refresh drops the API label cache"); }
+    check(wq_container_label(dir) == nil, @"no stale id after refresh");
+    [NSFileManager.defaultManager removeItemAtPath:base error:nil];
+}
+
 int main(void)
 {
     @autoreleasepool {
@@ -130,6 +163,7 @@ int main(void)
         testInvalidationDuringBlockedWorker();
         testStaleWorkerDoesNotRepublish();
         testFullScanCoordinator();
+        testLabelCacheIdentity();
         printf("All WQAccess scan lifecycle tests passed.\n");
     }
     return 0;
