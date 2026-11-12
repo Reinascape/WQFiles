@@ -69,7 +69,7 @@ static NSISO8601DateFormatter *wqp_dates(void)
 static NSString *wqp_summary(id v)
 {
     switch (wqp_type(v)) {
-        case WQPTypeString: return WQLocalized(WQPBoundedStringPreview(v));
+        case WQPTypeString: return [v length] ? WQPBoundedStringPreview(v) : WQLocalized(@"(empty)");
         case WQPTypeInteger: case WQPTypeReal: return [v stringValue];
         case WQPTypeBoolean: return [v boolValue] ? WQLocalized(@"YES") : WQLocalized(@"NO");
         case WQPTypeDate: return [wqp_dates() stringFromDate:v];
