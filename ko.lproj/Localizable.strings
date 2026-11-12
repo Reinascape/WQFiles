@@ -892,3 +892,10 @@
 "%@ An unfinished copy remains in %@." = "%@ 완료되지 않은 사본이 %@에 남아 있습니다.";
 "Finishing…" = "마무리 중…";
 "It had already finished when you cancelled, so the result was kept." = "취소했을 때 이미 완료되어 결과를 유지했습니다.";
+"The item was moved, replaced or changed after it was selected. It was left as it is." = "항목이 선택된 후 이동되거나 대체되거나 변경되었습니다. 그대로 두었습니다.";
+"Files are copied to Backups first. Links and special files (pipes, sockets) are removed without a backup and can't be restored." = "파일은 먼저 백업에 복사됩니다. 링크와 특수 파일(파이프, 소켓)은 백업 없이 제거되며 복원할 수 없습니다.";
+"%lu links or special files (pipes, sockets) are removed without a backup and can't be restored." = "백업 없이 제거되어 복원할 수 없는 링크 또는 특수 파일(파이프, 소켓): %lu개.";
+"Counting stopped at %lu items, so there may be more." = "%lu개 항목에서 개수 세기를 멈췄으므로 더 있을 수 있습니다.";
+"Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "일부 폴더나 항목을 읽을 수 없어 합계가 불완전할 수 있습니다. 그 안에서 일반 파일이 아닌 항목은 백업 없이 제거됩니다.";
+"Backups could not be read: %@" = "백업을 읽을 수 없습니다: %@";
+"Some backups could not be read, so this list may be incomplete." = "일부 백업을 읽을 수 없어 이 목록이 불완전할 수 있습니다.";

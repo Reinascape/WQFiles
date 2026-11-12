@@ -892,3 +892,10 @@
 "%@ An unfinished copy remains in %@." = "%@ 未完成的副本仍在 %@ 中。";
 "Finishing…" = "正在完成…";
 "It had already finished when you cancelled, so the result was kept." = "取消时操作已经完成，因此保留了结果。";
+"The item was moved, replaced or changed after it was selected. It was left as it is." = "该项目在选择后已被移动、替换或更改。已保持原样。";
+"Files are copied to Backups first. Links and special files (pipes, sockets) are removed without a backup and can't be restored." = "文件会先复制到备份。链接和特殊文件（管道、套接字）会在没有备份的情况下删除，且无法恢复。";
+"%lu links or special files (pipes, sockets) are removed without a backup and can't be restored." = "%lu 个链接或特殊文件（管道、套接字）会在没有备份的情况下删除，且无法恢复。";
+"Counting stopped at %lu items, so there may be more." = "计数已在 %lu 个项目处停止，因此可能还有更多。";
+"Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "部分文件夹或项目无法读取，因此这些总数可能不完整。其中不是普通文件的内容会在没有备份的情况下删除。";
+"Backups could not be read: %@" = "无法读取备份：%@";
+"Some backups could not be read, so this list may be incomplete." = "部分备份无法读取，因此此列表可能不完整。";

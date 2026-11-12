@@ -117,6 +117,58 @@ int main(void)
                 check(child >= 0, @"no-follow walk does not require ancestor enumeration");
                 close(child);
             } @finally { chmod(parent.fileSystemRepresentation, 0700); }
+
+            // CR-13: a non-regular .wq-caches-lock (link or folder) keeps
+            // blocking token requests, but explicit repair moves it aside
+            // without following it, creates a regular lock and then resets.
+            for (NSString *kind in @[@"link", @"folder"]) {
+                NSString *library3 = [base stringByAppendingPathComponent:[@"Library-lock-" stringByAppendingString:kind]];
+                NSString *nested3 = [library3 stringByAppendingPathComponent:@"Caches/nested"];
+                check([fm createDirectoryAtPath:nested3 withIntermediateDirectories:YES attributes:nil error:nil], @"create lock fixture library");
+                NSString *sentinel3 = [nested3 stringByAppendingPathComponent:@"sentinel"];
+                check([bytes writeToFile:sentinel3 atomically:YES], @"write lock fixture sentinel");
+                NSString *target = [base stringByAppendingPathComponent:[@"lock-target-" stringByAppendingString:kind]];
+                check([[@"foreign" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:target atomically:YES], @"lock link target");
+                int fd3 = WQOpenDirectoryNoLinks(library3);
+                check(fd3 >= 0, @"open lock fixture library");
+                check(WQCacheSwapBegin(fd3, @"/private/var/nonexistent-token-target"), @"interrupted swap beside a bad lock");
+                if ([kind isEqual:@"link"]) {
+                    check(symlinkat(target.fileSystemRepresentation, fd3, ".wq-caches-lock") == 0, @"symlink lock fixture");
+                } else {
+                    check(mkdirat(fd3, ".wq-caches-lock", 0700) == 0, @"directory lock fixture");
+                    int inner = openat(fd3, ".wq-caches-lock/inner", O_WRONLY | O_CREAT | O_EXCL, 0600);
+                    check(inner >= 0 && write(inner, "inner", 5) == 5, @"directory lock content");
+                    close(inner);
+                }
+                check(WQOpenRegularAt(fd3, ".wq-caches-lock", O_RDWR | O_CREAT, 0600) < 0 && !WQRecoverCacheSwapAtPath(library3),
+                      @"normal lock requests stay fail-closed on a non-regular lock");
+                NSMutableArray *repairSteps = [NSMutableArray new];
+                int repaired = WQCacheLockOpenForRepair(fd3, repairSteps);
+                check(repaired >= 0 && flock(repaired, LOCK_EX | LOCK_NB) == 0, @"repair creates and locks a regular lock");
+                struct stat lockSt;
+                check(fstatat(fd3, ".wq-caches-lock", &lockSt, AT_SYMLINK_NOFOLLOW) == 0 && S_ISREG(lockSt.st_mode), @"lock is a regular file again");
+                NSArray *quarantined = [[fm contentsOfDirectoryAtPath:library3 error:nil] filteredArrayUsingPredicate:
+                                        [NSPredicate predicateWithFormat:@"SELF BEGINSWITH '.wq-caches-lock-quarantine-'"]];
+                check(quarantined.count == 1, @"bad lock quarantined, not deleted");
+                NSString *q = [library3 stringByAppendingPathComponent:quarantined.firstObject];
+                if ([kind isEqual:@"link"])
+                    check([[fm destinationOfSymbolicLinkAtPath:q error:nil] isEqual:target] &&
+                          [[NSData dataWithContentsOfFile:target] isEqual:[@"foreign" dataUsingEncoding:NSUTF8StringEncoding]],
+                          @"symlink lock target never followed or changed");
+                else
+                    check([[NSData dataWithContentsOfFile:[q stringByAppendingPathComponent:@"inner"]] isEqual:[@"inner" dataUsingEncoding:NSUTF8StringEncoding]],
+                          @"directory lock contents kept");
+                check(WQCacheSwapReset(fd3, repairSteps) && [[NSData dataWithContentsOfFile:sentinel3] isEqual:bytes],
+                      @"reset after lock repair restores the preserved Caches");
+                close(repaired);
+                check(WQRecoverCacheSwapAtPath(library3) && WQCacheSwapBegin(fd3, @"/private/var/nonexistent-token-target") &&
+                      WQCacheSwapRecover(fd3), @"token requests work after lock repair");
+                [repairSteps removeAllObjects];
+                int again = WQCacheLockOpenForRepair(fd3, repairSteps);
+                check(again >= 0 && repairSteps.count == 0, @"repair of a healthy lock does nothing");
+                close(again);
+                close(fd3);
+            }
             check(!WQAbsolutePathGrammar(@"/private/var/../file") && !WQAbsolutePathGrammar(@"/private//var/file"), @"grammar rejects traversal and ambiguous empty components");
             close(fd);
         } @finally {

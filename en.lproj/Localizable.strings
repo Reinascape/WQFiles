@@ -892,3 +892,10 @@
 "%@ An unfinished copy remains in %@." = "%@ An unfinished copy remains in %@.";
 "Finishing…" = "Finishing…";
 "It had already finished when you cancelled, so the result was kept." = "It had already finished when you cancelled, so the result was kept.";
+"The item was moved, replaced or changed after it was selected. It was left as it is." = "The item was moved, replaced or changed after it was selected. It was left as it is.";
+"Files are copied to Backups first. Links and special files (pipes, sockets) are removed without a backup and can't be restored." = "Files are copied to Backups first. Links and special files (pipes, sockets) are removed without a backup and can't be restored.";
+"%lu links or special files (pipes, sockets) are removed without a backup and can't be restored." = "%lu links or special files (pipes, sockets) are removed without a backup and can't be restored.";
+"Counting stopped at %lu items, so there may be more." = "Counting stopped at %lu items, so there may be more.";
+"Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup.";
+"Backups could not be read: %@" = "Backups could not be read: %@";
+"Some backups could not be read, so this list may be incomplete." = "Some backups could not be read, so this list may be incomplete.";

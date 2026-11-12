@@ -892,3 +892,10 @@
 "%@ An unfinished copy remains in %@." = "%@ Незавершённая копия осталась в %@.";
 "Finishing…" = "Завершение…";
 "It had already finished when you cancelled, so the result was kept." = "Операция уже завершилась к моменту отмены, поэтому результат сохранён.";
+"The item was moved, replaced or changed after it was selected. It was left as it is." = "Объект был перемещён, заменён или изменён после выбора. Он оставлен без изменений.";
+"Files are copied to Backups first. Links and special files (pipes, sockets) are removed without a backup and can't be restored." = "Сначала файлы копируются в резервные копии. Ссылки и специальные файлы (каналы, сокеты) удаляются без резервной копии, и их нельзя восстановить.";
+"%lu links or special files (pipes, sockets) are removed without a backup and can't be restored." = "Ссылки или специальные файлы (каналы, сокеты), которые удаляются без резервной копии и не могут быть восстановлены: %lu.";
+"Counting stopped at %lu items, so there may be more." = "Подсчёт остановлен на %lu объектах, их может быть больше.";
+"Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "Некоторые папки или объекты не удалось прочитать, поэтому итоги могут быть неполными. Всё, что в них не является обычным файлом, удаляется без резервной копии.";
+"Backups could not be read: %@" = "Не удалось прочитать резервные копии: %@";
+"Some backups could not be read, so this list may be incomplete." = "Некоторые резервные копии не удалось прочитать, поэтому список может быть неполным.";

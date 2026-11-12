@@ -888,3 +888,10 @@
 "%@ An unfinished copy remains in %@." = "%@ لا تزال نسخة غير مكتملة في %@.";
 "Finishing…" = "جارٍ الإنهاء…";
 "It had already finished when you cancelled, so the result was kept." = "كانت العملية قد انتهت بالفعل عند الإلغاء، لذا تم الاحتفاظ بالنتيجة.";
+"The item was moved, replaced or changed after it was selected. It was left as it is." = "تم نقل العنصر أو استبداله أو تغييره بعد تحديده. تُرك كما هو.";
+"Files are copied to Backups first. Links and special files (pipes, sockets) are removed without a backup and can't be restored." = "تُنسخ الملفات أولًا إلى النسخ الاحتياطية. تُزال الروابط والملفات الخاصة (الأنابيب والمقابس) دون نسخة احتياطية ولا يمكن استعادتها.";
+"%lu links or special files (pipes, sockets) are removed without a backup and can't be restored." = "الروابط أو الملفات الخاصة (الأنابيب والمقابس) التي تُزال دون نسخة احتياطية ولا يمكن استعادتها: %lu.";
+"Counting stopped at %lu items, so there may be more." = "توقف العد عند %lu عنصر، لذا قد يكون هناك المزيد.";
+"Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "تعذرت قراءة بعض المجلدات أو العناصر، لذا قد تكون هذه المجاميع غير مكتملة. كل ما بداخلها وليس ملفًا عاديًا يُزال دون نسخة احتياطية.";
+"Backups could not be read: %@" = "تعذرت قراءة النسخ الاحتياطية: %@";
+"Some backups could not be read, so this list may be incomplete." = "تعذرت قراءة بعض النسخ الاحتياطية، لذا قد تكون هذه القائمة غير مكتملة.";

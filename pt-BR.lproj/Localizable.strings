@@ -892,3 +892,10 @@
 "%@ An unfinished copy remains in %@." = "%@ Uma cópia incompleta ficou em %@.";
 "Finishing…" = "Finalizando…";
 "It had already finished when you cancelled, so the result was kept." = "Já havia terminado quando você cancelou, então o resultado foi mantido.";
+"The item was moved, replaced or changed after it was selected. It was left as it is." = "O item foi movido, substituído ou alterado depois de ser selecionado. Ele foi deixado como está.";
+"Files are copied to Backups first. Links and special files (pipes, sockets) are removed without a backup and can't be restored." = "Os arquivos são copiados primeiro para Backups. Links e arquivos especiais (pipes, sockets) são removidos sem backup e não podem ser restaurados.";
+"%lu links or special files (pipes, sockets) are removed without a backup and can't be restored." = "Links ou arquivos especiais (pipes, sockets) removidos sem backup e que não podem ser restaurados: %lu.";
+"Counting stopped at %lu items, so there may be more." = "A contagem parou em %lu itens, então pode haver mais.";
+"Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "Algumas pastas ou itens não puderam ser lidos, então estes totais podem estar incompletos. Tudo o que houver neles que não seja um arquivo comum é removido sem backup.";
+"Backups could not be read: %@" = "Não foi possível ler os backups: %@";
+"Some backups could not be read, so this list may be incomplete." = "Alguns backups não puderam ser lidos, então esta lista pode estar incompleta.";

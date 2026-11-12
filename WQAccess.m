@@ -224,15 +224,18 @@ BOOL wq_reset_access_cache(NSString **errorText)
     [NSFileManager.defaultManager createDirectoryAtPath:libraryPath withIntermediateDirectories:YES attributes:nil error:nil];
     int library = WQOpenDirectoryNoLinks(libraryPath);
     if (library < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
-    int lock = WQOpenRegularAt(library, ".wq-caches-lock", O_RDWR | O_CREAT, 0600);
+    NSMutableArray<NSString *> *done = [NSMutableArray new];
+    // Unlike token requests, repair moves a non-regular lock aside first.
+    int lock = WQCacheLockOpenForRepair(library, done);
     if (lock < 0 || flock(lock, LOCK_EX | LOCK_NB) != 0) {
         int err = errno;
         if (lock >= 0) close(lock);
         close(library);
+        wq_log(@"access cache reset in %@: lock unavailable (%@)%@", libraryPath, wq_errno(err),
+               done.count ? [@"; " stringByAppendingString:[done componentsJoinedByString:@", "]] : @"");
         if (errorText) *errorText = wq_errno(err);
         return NO;
     }
-    NSMutableArray<NSString *> *done = [NSMutableArray new];
     BOOL ok = WQCacheSwapReset(library, done);
     int err = errno;
     close(lock);
@@ -1149,6 +1152,11 @@ BOOL wq_backup_unit_deletable(NSString *path)
     return NO;
 }
 
+static BOOL wq_purge_root_matches(NSString *path, int fd);
+static BOOL wq_purge_fd(int fd, NSString *path, unsigned long long *freed, WQScanCancellation *cancellation);
+static BOOL wq_entry_is(int dir, const char *name, const struct stat *st);
+static BOOL wq_selection_changed(NSString **errorText);
+
 BOOL wq_delete_backup(NSString *path, NSString **errorText)
 {
     if (!wq_backup_unit_deletable(path)) {
@@ -1168,14 +1176,25 @@ BOOL wq_delete_backup(NSString *path, NSString **errorText)
     }
     int rc;
     if (S_ISDIR(st.st_mode)) {
+        // Purge the unit through a descriptor pinned to the examined folder;
+        // a unit replaced meanwhile is left alone.
         unsigned long long ignored = 0;
-        if (!wq_purge_contents_cancellable(canonical, &ignored, nil)) {
+        int unit = openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+        struct stat unitSt;
+        BOOL same = unit >= 0 && fstat(unit, &unitSt) == 0 && WQSameObject(&unitSt, &st);
+        WQ_TREE_HOOK(@"deleteBackupPurge", canonical);
+        BOOL purged = same && wq_purge_root_matches(canonical, unit) && wq_purge_fd(unit, canonical, &ignored, nil);
+        if (unit >= 0) close(unit);
+        if (!same) { close(parent); return wq_selection_changed(errorText); }
+        if (!purged) {
             if (errorText) *errorText = WQLocalized(@"Could not remove everything inside the backup.");
             close(parent);
             return NO;
         }
+        if (!wq_entry_is(parent, name, &st)) { close(parent); return wq_selection_changed(errorText); }
         rc = unlinkat(parent, name, AT_REMOVEDIR);
     } else {
+        if (!wq_entry_is(parent, name, &st)) { close(parent); return wq_selection_changed(errorText); }
         rc = unlinkat(parent, name, 0);
     }
     int err = errno;
@@ -1255,6 +1274,38 @@ BOOL wq_create_dir(NSString *path, NSString **errorText)
     return rc == 0;
 }
 
+NSDictionary<NSString *, NSNumber *> *wq_identity_for_stat(const struct stat *st)
+{
+    return @{ @"device": @(st->st_dev), @"inode": @(st->st_ino), @"type": @(st->st_mode & S_IFMT) };
+}
+
+NSDictionary<NSString *, NSNumber *> *wq_item_identity(NSString *path)
+{
+    struct stat st;
+    return wq_stat(path, &st) ? wq_identity_for_stat(&st) : nil;
+}
+
+// YES when no identity was given, or st is the object it describes.
+static BOOL wq_identity_matches(NSDictionary<NSString *, NSNumber *> *identity, const struct stat *st)
+{
+    return !identity || [wq_identity_for_stat(st) isEqualToDictionary:identity];
+}
+
+static BOOL wq_selection_changed(NSString **errorText)
+{
+    if (errorText) *errorText = WQLocalized(@"The item was moved, replaced or changed after it was selected. It was left as it is.");
+    return NO;
+}
+
+// The entry `name` in `dir` is still the object st describes (same identity
+// and type). Never follows a link.
+static BOOL wq_entry_is(int dir, const char *name, const struct stat *st)
+{
+    struct stat now;
+    return fstatat(dir, name, &now, AT_SYMLINK_NOFOLLOW) == 0 && WQSameObject(&now, st) &&
+        (now.st_mode & S_IFMT) == (st->st_mode & S_IFMT);
+}
+
 // Backs a regular file up (into `unitStamp`, or a new unit) and removes it.
 static BOOL wq_delete_regular(NSString *path, const struct stat *st, NSString *unitStamp, NSString **errorText)
 {
@@ -1262,7 +1313,60 @@ static BOOL wq_delete_regular(NSString *path, const struct stat *st, NSString *u
     if (!wq_mutation_open(path, wq_version_for_stat(st), &mutation, O_RDONLY, errorText)) return NO;
     NSString *backup = nil;
     if (!wq_mutation_backup_into(path, &mutation, unitStamp, &backup, errorText)) { wq_mutation_close(&mutation); return NO; }
-    int rc = unlinkat(mutation.parent, path.lastPathComponent.fileSystemRepresentation, 0);
+    const char *name = path.lastPathComponent.fileSystemRepresentation;
+    // The name must still be the backed-up file right before it is unlinked.
+    if (!wq_entry_is(mutation.parent, name, &mutation.before)) { wq_mutation_close(&mutation); return wq_selection_changed(errorText); }
+    int rc = unlinkat(mutation.parent, name, 0);
+    int err = errno;
+    wq_mutation_close(&mutation);
+    if (rc != 0 && errorText) *errorText = wq_errno(err);
+    return rc == 0;
+}
+
+// As wq_delete_regular, but relative to a pinned folder descriptor `dir`
+// (a recursive delete): the file is opened through `dir`, the pathname must
+// still lead to `dir` (wq_mutation_current) before and after the backup, and
+// the entry must still be the backed-up file right before it is unlinked.
+static BOOL wq_delete_regular_at(int dir, NSString *path, const struct stat *st, NSString *unitStamp, NSString **errorText)
+{
+    const char *name = path.lastPathComponent.fileSystemRepresentation;
+    WQMutation mutation = { .fd = -1, .parent = fcntl(dir, F_DUPFD_CLOEXEC, 0) };
+    if (mutation.parent < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
+    mutation.fd = WQOpenRegularAt(dir, name, O_RDONLY, 0);
+    if (mutation.fd < 0 && wq_is_denied(errno) && wq_grant(path)) mutation.fd = WQOpenRegularAt(dir, name, O_RDONLY, 0);
+    if (mutation.fd < 0) {
+        int err = errno;
+        wq_mutation_close(&mutation);
+        if (err == EINVAL) return wq_selection_changed(errorText);   // no longer a regular file
+        if (errorText) *errorText = wq_errno(err);
+        return NO;
+    }
+    if (flock(mutation.fd, LOCK_EX | LOCK_NB) != 0) {
+        int err = errno;
+        if (err != ENOTSUP && err != EOPNOTSUPP && err != ENOSYS) {
+            wq_mutation_close(&mutation);
+            if (errorText) *errorText = wq_errno(err);
+            return NO;
+        }
+    }
+    if (fstat(mutation.fd, &mutation.before) != 0 ||
+        ![wq_version_for_stat(&mutation.before) isEqualToDictionary:wq_version_for_stat(st)] ||
+        !wq_mutation_current(path, &mutation, YES, NULL)) {
+        wq_mutation_close(&mutation);
+        return wq_selection_changed(errorText);
+    }
+    NSString *backupError = nil;
+    if (!wq_backup_fd(path, mutation.fd, unitStamp, NULL, &backupError)) {
+        wq_mutation_close(&mutation);
+        if (errorText) *errorText = WQLocalizedFormat(@"Backup of the current file failed, nothing was written: %@", backupError ?: WQLocalized(@"unknown error"));
+        return NO;
+    }
+    WQ_MUTATION_HOOK(@"backedUp", path);
+    if (!wq_mutation_current(path, &mutation, YES, NULL) || !wq_entry_is(dir, name, &mutation.before)) {
+        wq_mutation_close(&mutation);
+        return wq_selection_changed(errorText);
+    }
+    int rc = unlinkat(dir, name, 0);
     int err = errno;
     wq_mutation_close(&mutation);
     if (rc != 0 && errorText) *errorText = wq_errno(err);
@@ -1288,6 +1392,22 @@ BOOL wq_is_protected_folder(NSString *path)
     return p.pathComponents.count <= 5;
 }
 
+// One pinned folder of a recursive delete: its descriptor (opened without
+// following links), its identity, its path, and the children still to remove.
+@interface WQTreeFrame : NSObject {
+@public
+    int fd;
+    struct stat st;
+    NSString *path;
+    NSArray<NSString *> *children;
+    NSUInteger next;
+}
+@end
+@implementation WQTreeFrame
+- (instancetype)init { if ((self = [super init])) fd = -1; return self; }
+- (void)dealloc { if (fd >= 0) close(fd); }
+@end
+
 typedef struct {
     NSString *stamp;
     BOOL (^cancelled)(void);
@@ -1296,52 +1416,153 @@ typedef struct {
     NSString *error;
 } WQTreeDelete;
 
-static BOOL wq_delete_tree_entry(NSString *path, WQTreeDelete *ctx, NSUInteger depth)
+static BOOL wq_tree_fail(WQTreeDelete *ctx, NSString *path, NSString *error)
 {
-    if (ctx->cancelled && ctx->cancelled()) { ctx->error = WQLocalized(@"Cancelled"); return NO; }
-    if (depth > 128) { ctx->error = WQLocalized(@"Folders are nested too deeply"); return NO; }
-    struct stat st;
-    if (!wq_stat(path, &st)) {
-        if (errno == ENOENT) return YES;   // gone meanwhile
-        ctx->error = [NSString stringWithFormat:@"%@: %@", path.lastPathComponent, wq_errno(errno)];
-        return NO;
+    ctx->error = [NSString stringWithFormat:@"%@: %@", path.lastPathComponent, error ?: @"failed"];
+    return NO;
+}
+
+static BOOL wq_tree_changed(WQTreeDelete *ctx, NSString *path)
+{
+    NSString *text = nil;
+    wq_selection_changed(&text);
+    return wq_tree_fail(ctx, path, text);
+}
+
+// The pathname still names the pinned folder (a cheap swap detector; every
+// removal itself stays descriptor-relative).
+static BOOL wq_tree_frame_current(NSString *path, const struct stat *st)
+{
+    struct stat now;
+    return wq_stat(path, &now) && S_ISDIR(now.st_mode) && WQSameObject(&now, st);
+}
+
+// Names in an open folder, read through a fresh descriptor of that folder.
+static NSArray<NSString *> *wq_tree_list(int fd, NSString *path, int *error)
+{
+    int listing = openat(fd, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (listing < 0 && wq_is_denied(errno) && wq_grant(path)) listing = openat(fd, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (listing < 0) { *error = errno; return nil; }
+    DIR *dir = fdopendir(listing);
+    if (!dir) { *error = errno; close(listing); return nil; }
+    NSMutableArray<NSString *> *names = [NSMutableArray new];
+    int err = 0;
+    for (;;) {
+        errno = 0;
+        struct dirent *entry = readdir(dir);
+        if (!entry) { err = errno; break; }
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        NSString *name = [NSFileManager.defaultManager stringWithFileSystemRepresentation:entry->d_name length:strlen(entry->d_name)];
+        if (!name) { err = EILSEQ; break; }
+        [names addObject:name];
     }
-    if (S_ISDIR(st.st_mode)) {
-        NSString *listError = nil;
-        NSArray<NSString *> *children = wq_list(path, &listError);
-        if (!children) { ctx->error = [NSString stringWithFormat:@"%@: %@", path.lastPathComponent, listError ?: @"can't list"]; return NO; }
-        for (NSString *child in children)
-            if (!wq_delete_tree_entry([path stringByAppendingPathComponent:child], ctx, depth + 1)) return NO;
-        NSString *parentPath = path.stringByDeletingLastPathComponent;
-        int parent = wq_open_directory_flags(parentPath, O_SEARCH);
-        int rc = parent >= 0 ? unlinkat(parent, path.lastPathComponent.fileSystemRepresentation, AT_REMOVEDIR) : -1;
-        int err = errno;
-        if (parent >= 0) close(parent);
-        if (rc != 0) { ctx->error = [NSString stringWithFormat:@"%@: %@", path.lastPathComponent, wq_errno(err)]; return NO; }
-        return YES;
+    closedir(dir);
+    if (err) { *error = err; return nil; }
+    return names;
+}
+
+// Opens the folder `name` in `parent`, checks it is the object st describes,
+// and lists it.
+static WQTreeFrame *wq_tree_open(int parent, NSString *path, const struct stat *st, WQTreeDelete *ctx)
+{
+    const char *name = path.lastPathComponent.fileSystemRepresentation;
+    WQTreeFrame *frame = [WQTreeFrame new];
+    frame->fd = openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (frame->fd < 0 && wq_is_denied(errno) && wq_grant(path))
+        frame->fd = openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (frame->fd < 0) {
+        if (errno == ENOTDIR || errno == ELOOP || errno == ENOENT) { wq_tree_changed(ctx, path); return nil; }
+        wq_tree_fail(ctx, path, wq_errno(errno));
+        return nil;
     }
+    if (fstat(frame->fd, &frame->st) != 0 || !WQSameObject(&frame->st, st) || !S_ISDIR(frame->st.st_mode)) {
+        wq_tree_changed(ctx, path);
+        return nil;
+    }
+    frame->path = path;
+    int err = 0;
+    frame->children = wq_tree_list(frame->fd, path, &err);
+    if (!frame->children) { wq_tree_fail(ctx, path, wq_errno(err)); return nil; }
+    return frame;
+}
+
+// Removes one non-folder entry `name` of the pinned folder `dir` (at dirPath,
+// identity dirSt). Regular files are backed up first; links and special files
+// are removed as they are (never followed).
+static BOOL wq_tree_remove_leaf(int dir, NSString *dirPath, const struct stat *dirSt, NSString *path,
+                                const struct stat *st, WQTreeDelete *ctx)
+{
     NSString *error = nil;
     BOOL ok;
-    if (S_ISREG(st.st_mode)) {
-        ok = wq_delete_regular(path, &st, ctx->stamp, &error);
+    if (S_ISREG(st->st_mode)) {
+        ok = wq_delete_regular_at(dir, path, st, ctx->stamp, &error);
     } else {
-        // Links, sockets, pipes: removed as they are; there is nothing to back up.
-        NSString *parentPath = path.stringByDeletingLastPathComponent;
-        int parent = wq_open_directory_flags(parentPath, O_SEARCH);
-        ok = parent >= 0 && unlinkat(parent, path.lastPathComponent.fileSystemRepresentation, 0) == 0;
+        const char *name = path.lastPathComponent.fileSystemRepresentation;
+        WQ_TREE_HOOK(@"deleteTreeUnlink", path);
+        if (!wq_tree_frame_current(dirPath, dirSt) || !wq_entry_is(dir, name, st)) return wq_tree_changed(ctx, path);
+        ok = unlinkat(dir, name, 0) == 0;
         if (!ok) error = wq_errno(errno);
-        if (parent >= 0) close(parent);
     }
-    if (!ok) { ctx->error = [NSString stringWithFormat:@"%@: %@", path.lastPathComponent, error ?: @"failed"]; return NO; }
+    if (!ok) return wq_tree_fail(ctx, path, error);
     ctx->deleted++;
     if (ctx->progress) ctx->progress(ctx->deleted);
     return YES;
 }
 
-BOOL wq_delete_tree(NSString *path, BOOL (^cancelled)(void), void (^progress)(NSUInteger deleted),
-                    NSUInteger *deleted, NSString **backupUnit, NSString **errorText)
+// Iterative, descriptor-relative walk. Every folder is pinned by a descriptor
+// opened without following links; every child is opened or removed relative
+// to it. Before each removal the folder's pathname must still lead to the
+// pinned folder and the entry must still be the object that was examined, so
+// a folder moved or replaced mid-way stops the delete (fail closed) instead
+// of continuing into the replacement.
+static BOOL wq_tree_remove(int parent, NSString *parentPath, const struct stat *parentSt, NSString *path,
+                           const struct stat *rootSt, WQTreeDelete *ctx)
+{
+    if (!S_ISDIR(rootSt->st_mode)) return wq_tree_remove_leaf(parent, parentPath, parentSt, path, rootSt, ctx);
+    WQTreeFrame *root = wq_tree_open(parent, path, rootSt, ctx);
+    if (!root) return NO;
+    NSMutableArray<WQTreeFrame *> *stack = [NSMutableArray arrayWithObject:root];
+    while (stack.count) {
+        if (ctx->cancelled && ctx->cancelled()) { ctx->error = WQLocalized(@"Cancelled"); return NO; }
+        WQTreeFrame *frame = stack.lastObject;
+        if (frame->next < frame->children.count) {
+            NSString *childPath = [frame->path stringByAppendingPathComponent:frame->children[frame->next++]];
+            WQ_TREE_HOOK(@"deleteTreeChild", childPath);
+            if (!wq_tree_frame_current(frame->path, &frame->st)) return wq_tree_changed(ctx, frame->path);
+            struct stat st;
+            if (fstatat(frame->fd, childPath.lastPathComponent.fileSystemRepresentation, &st, AT_SYMLINK_NOFOLLOW) != 0) {
+                if (errno == ENOENT) continue;   // gone meanwhile
+                return wq_tree_fail(ctx, childPath, wq_errno(errno));
+            }
+            if (S_ISDIR(st.st_mode)) {
+                if (stack.count > 128) { ctx->error = WQLocalized(@"Folders are nested too deeply"); return NO; }
+                WQTreeFrame *child = wq_tree_open(frame->fd, childPath, &st, ctx);
+                if (!child) return NO;
+                [stack addObject:child];
+            } else if (!wq_tree_remove_leaf(frame->fd, frame->path, &frame->st, childPath, &st, ctx)) {
+                return NO;
+            }
+            continue;
+        }
+        // Everything inside is gone: remove the folder itself from its parent.
+        [stack removeLastObject];
+        WQTreeFrame *up = stack.lastObject;
+        int dir = up ? up->fd : parent;
+        const char *name = frame->path.lastPathComponent.fileSystemRepresentation;
+        WQ_TREE_HOOK(@"deleteTreeRemoveDir", frame->path);
+        if (!wq_tree_frame_current(up ? up->path : parentPath, up ? &up->st : parentSt) ||
+            !wq_tree_frame_current(frame->path, &frame->st) || !wq_entry_is(dir, name, &frame->st))
+            return wq_tree_changed(ctx, frame->path);
+        if (unlinkat(dir, name, AT_REMOVEDIR) != 0) return wq_tree_fail(ctx, frame->path, wq_errno(errno));
+    }
+    return YES;
+}
+
+BOOL wq_delete_tree_expecting(NSString *path, NSDictionary<NSString *, NSNumber *> *identity, BOOL (^cancelled)(void),
+                              void (^progress)(NSUInteger deleted), NSUInteger *deleted, NSString **backupUnit, NSString **errorText)
 {
     if (deleted) *deleted = 0;
+    if (backupUnit) *backupUnit = nil;
     if (wq_is_backup_storage_path(path)) {
         if (errorText) *errorText = WQLocalized(@"Backup storage cannot be overwritten or deleted through the file browser.");
         return NO;
@@ -1352,35 +1573,80 @@ BOOL wq_delete_tree(NSString *path, BOOL (^cancelled)(void), void (^progress)(NS
     }
     WQTreeDelete ctx = { .stamp = wq_new_backup_stamp(), .cancelled = cancelled, .progress = progress };
     if (!ctx.stamp) { if (errorText) *errorText = WQLocalized(@"Cannot allocate a backup name."); return NO; }
-    BOOL ok = wq_delete_tree_entry(path, &ctx, 0);
+    // Pin the parent, then the selected item inside it (no links followed).
+    NSString *parentPath = path.stringByDeletingLastPathComponent;
+    int parent = wq_open_directory_flags(parentPath, O_SEARCH);
+    if (parent < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
+    const char *name = path.lastPathComponent.fileSystemRepresentation;
+    struct stat parentSt, st;
+    BOOL ok;
+    if (fstat(parent, &parentSt) != 0) {
+        ok = wq_tree_fail(&ctx, parentPath, wq_errno(errno));
+    } else if (fstatat(parent, name, &st, AT_SYMLINK_NOFOLLOW) != 0 &&
+               !(wq_is_denied(errno) && wq_grant(parentPath) && fstatat(parent, name, &st, AT_SYMLINK_NOFOLLOW) == 0)) {
+        // Already gone: nothing to delete, unless a specific item was expected.
+        int err = errno;
+        ok = err == ENOENT && !identity;
+        if (!ok) {
+            if (err == ENOENT) wq_tree_changed(&ctx, path);
+            else wq_tree_fail(&ctx, path, wq_errno(err));
+        }
+    } else if (!wq_identity_matches(identity, &st)) {
+        ok = wq_tree_changed(&ctx, path);
+    } else {
+        ok = wq_tree_remove(parent, parentPath, &parentSt, path, &st, &ctx);
+    }
+    close(parent);
     if (deleted) *deleted = ctx.deleted;
     NSString *unit = [wq_backup_root() stringByAppendingPathComponent:ctx.stamp];
     struct stat ust;
     if (backupUnit) *backupUnit = lstat(unit.fileSystemRepresentation, &ust) == 0 ? unit : nil;
-    wq_log(@"delete folder: %@ -> %@, %lu files backed up and removed (unit %@)", path, ok ? @"OK" : ctx.error,
+    wq_log(@"delete folder: %@ -> %@, %lu items removed (unit %@)", path, ok ? @"OK" : ctx.error,
            (unsigned long)ctx.deleted, ctx.stamp);
     if (!ok && errorText) *errorText = ctx.error;
     return ok;
 }
 
-void wq_tree_count(NSString *path, NSUInteger limit, NSUInteger *files, unsigned long long *bytes)
+BOOL wq_delete_tree(NSString *path, BOOL (^cancelled)(void), void (^progress)(NSUInteger deleted),
+                    NSUInteger *deleted, NSString **backupUnit, NSString **errorText)
 {
-    NSMutableArray<NSString *> *pending = [NSMutableArray arrayWithObject:path];
-    *files = 0; *bytes = 0;
-    while (pending.count && *files < limit) {
-        NSString *dir = pending.lastObject;
-        [pending removeLastObject];
-        for (NSString *child in wq_list(dir, NULL) ?: @[]) {
-            NSString *p = [dir stringByAppendingPathComponent:child];
-            struct stat st;
-            if (!wq_stat(p, &st)) continue;
-            if (S_ISDIR(st.st_mode)) [pending addObject:p];
-            else { (*files)++; if (S_ISREG(st.st_mode)) *bytes += (unsigned long long)st.st_size; }
-        }
-    }
+    return wq_delete_tree_expecting(path, nil, cancelled, progress, deleted, backupUnit, errorText);
 }
 
-BOOL wq_delete(NSString *path, NSString **errorText)
+WQTreeCount wq_tree_count(NSString *path, NSUInteger limit)
+{
+    WQTreeCount count = { 0, 0, 0, WQTreeCountExact };
+    struct stat st;
+    if (!wq_stat(path, &st)) {
+        if (errno != ENOENT) count.state = WQTreeCountUnreadable;
+        return count;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        if (S_ISREG(st.st_mode)) { count.regular = 1; count.bytes = (unsigned long long)st.st_size; }
+        else count.other = 1;
+        return count;
+    }
+    NSMutableArray<NSString *> *pending = [NSMutableArray arrayWithObject:path];
+    while (pending.count) {
+        if (count.regular + count.other >= limit) { count.state = WQTreeCountLimited; break; }
+        NSString *dir = pending.lastObject;
+        [pending removeLastObject];
+        NSArray<NSString *> *children = wq_list(dir, NULL);
+        if (!children) { count.state = WQTreeCountUnreadable; continue; }
+        for (NSString *child in children) {
+            NSString *p = [dir stringByAppendingPathComponent:child];
+            if (!wq_stat(p, &st)) { if (errno != ENOENT) count.state = WQTreeCountUnreadable; continue; }
+            if (S_ISDIR(st.st_mode)) [pending addObject:p];
+            else if (S_ISREG(st.st_mode)) { count.regular++; count.bytes += (unsigned long long)st.st_size; }
+            else count.other++;
+        }
+    }
+    // An unreadable part outranks the limit: the totals are not even a lower
+    // bound for what the delete will meet there.
+    return count;
+}
+
+BOOL wq_delete_expecting(NSString *path, NSDictionary<NSString *, NSNumber *> *identity, NSString **errorText)
 {
     if (wq_is_backup_storage_path(path)) {
         if (errorText) *errorText = WQLocalized(@"Backup storage cannot be overwritten or deleted through the file browser.");
@@ -1402,6 +1668,11 @@ BOOL wq_delete(NSString *path, NSString **errorText)
         close(parent);
         return NO;
     }
+    if (!wq_identity_matches(identity, &st)) {
+        close(parent);
+        wq_log(@"delete: %@ -> changed since it was selected", path);
+        return wq_selection_changed(errorText);
+    }
     if (S_ISREG(st.st_mode)) {
         close(parent);
         BOOL ok = wq_delete_regular(path, &st, nil, errorText);
@@ -1409,9 +1680,19 @@ BOOL wq_delete(NSString *path, NSString **errorText)
         return ok;
     }
     int flags = S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0;
-    int rc = unlinkat(parent, name, flags);
-    if (rc != 0 && wq_is_denied(errno) && wq_grant(parentPath))
+    WQ_TREE_HOOK(@"deleteReady", path);
+    // Links and special files have no backup: the name must still be the
+    // examined object right before it is removed.
+    int rc = -1;
+    if (wq_entry_is(parent, name, &st)) {
         rc = unlinkat(parent, name, flags);
+        if (rc != 0 && wq_is_denied(errno) && wq_grant(parentPath) && wq_entry_is(parent, name, &st))
+            rc = unlinkat(parent, name, flags);
+    } else {
+        close(parent);
+        wq_log(@"delete: %@ -> changed before removal", path);
+        return wq_selection_changed(errorText);
+    }
     int err = errno;
     close(parent);
     wq_log(@"delete: %@ -> %@", path, rc == 0 ? @"OK" : wq_errno(err));
@@ -1419,7 +1700,47 @@ BOOL wq_delete(NSString *path, NSString **errorText)
     return rc == 0;
 }
 
-BOOL wq_rename(NSString *path, NSString *newName, NSString **errorText)
+BOOL wq_delete(NSString *path, NSString **errorText)
+{
+    return wq_delete_expecting(path, nil, errorText);
+}
+
+// Source-identity guard for rename and move: `name` in `from` must be the
+// selected object before the no-replace rename, and the renamed entry must
+// be that same object afterwards. A replacement that slipped in between is
+// put back (no-replace) and the operation fails.
+static BOOL wq_rename_checked(int from, const char *name, int to, const char *newName, NSString *sourcePath,
+                              NSArray<NSString *> *grants, NSDictionary<NSString *, NSNumber *> *identity,
+                              NSString *hookStage, NSString *hookPath, BOOL *changed)
+{
+    *changed = NO;
+    (void)hookStage; (void)hookPath;   // test hooks only
+    struct stat before, after;
+    if (fstatat(from, name, &before, AT_SYMLINK_NOFOLLOW) != 0) {
+        if (!wq_is_denied(errno)) return NO;
+        for (NSString *grant in grants) wq_grant(grant);
+        if (fstatat(from, name, &before, AT_SYMLINK_NOFOLLOW) != 0) return NO;
+    }
+    if (!wq_identity_matches(identity, &before)) { *changed = YES; return NO; }
+    WQ_TREE_HOOK(hookStage, hookPath);
+    // RENAME_EXCL: never replaces an item that is already there.
+    int rc = renameatx_np(from, name, to, newName, RENAME_EXCL);
+    if (rc != 0 && wq_is_denied(errno)) {
+        for (NSString *grant in grants) wq_grant(grant);
+        rc = renameatx_np(from, name, to, newName, RENAME_EXCL);
+    }
+    if (rc != 0) return NO;
+    if (fstatat(to, newName, &after, AT_SYMLINK_NOFOLLOW) == 0 && WQSameObject(&after, &before) &&
+        (after.st_mode & S_IFMT) == (before.st_mode & S_IFMT)) return YES;
+    *changed = YES;
+    int back = renameatx_np(to, newName, from, name, RENAME_EXCL);
+    wq_log(@"rename/move: %@ was replaced during the operation; %@", sourcePath,
+           back == 0 ? @"put back" : [@"could not put it back: " stringByAppendingString:wq_errno(errno)]);
+    errno = EAGAIN;
+    return NO;
+}
+
+BOOL wq_rename_expecting(NSString *path, NSString *newName, NSDictionary<NSString *, NSNumber *> *identity, NSString **errorText)
 {
     if (!WQAbsolutePathGrammar(WQCanonicalVarPath(path)) || newName.length == 0 || [newName containsString:@"/"] ||
         [newName isEqualToString:@"."] || [newName isEqualToString:@".."] || [newName rangeOfString:@"\0"].location != NSNotFound) {
@@ -1434,18 +1755,23 @@ BOOL wq_rename(NSString *path, NSString *newName, NSString **errorText)
     NSString *parentPath = path.stringByDeletingLastPathComponent;
     int parent = wq_open_directory_flags(parentPath, O_SEARCH);
     if (parent < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
-    WQ_TREE_HOOK(@"renameReady", [parentPath stringByAppendingPathComponent:newName]);
-    int rc = renameatx_np(parent, path.lastPathComponent.fileSystemRepresentation, parent, newName.fileSystemRepresentation, RENAME_EXCL);
-    if (rc != 0 && wq_is_denied(errno) && wq_grant(parentPath))
-        rc = renameatx_np(parent, path.lastPathComponent.fileSystemRepresentation, parent, newName.fileSystemRepresentation, RENAME_EXCL);
+    BOOL changed = NO;
+    BOOL ok = wq_rename_checked(parent, path.lastPathComponent.fileSystemRepresentation, parent, newName.fileSystemRepresentation,
+                                path, @[parentPath], identity, @"renameReady", [parentPath stringByAppendingPathComponent:newName], &changed);
     int err = errno;
     close(parent);
-    wq_log(@"rename: %@ -> %@: %@", path, newName, rc == 0 ? @"OK" : wq_errno(err));
-    if (rc != 0 && errorText) *errorText = err == EEXIST ? WQLocalized(@"An item with that name already exists") : wq_errno(err);
-    return rc == 0;
+    wq_log(@"rename: %@ -> %@: %@", path, newName, ok ? @"OK" : changed ? @"changed since it was selected" : wq_errno(err));
+    if (!ok && changed) return wq_selection_changed(errorText);
+    if (!ok && errorText) *errorText = err == EEXIST ? WQLocalized(@"An item with that name already exists") : wq_errno(err);
+    return ok;
 }
 
-BOOL wq_move(NSString *path, NSString *destDir, NSString **errorText)
+BOOL wq_rename(NSString *path, NSString *newName, NSString **errorText)
+{
+    return wq_rename_expecting(path, newName, nil, errorText);
+}
+
+BOOL wq_move_expecting(NSString *path, NSString *destDir, NSDictionary<NSString *, NSNumber *> *identity, NSString **errorText)
 {
     NSString *source = WQCanonicalVarPath(path), *target = WQCanonicalVarPath(destDir);
     NSString *name = source.lastPathComponent;
@@ -1471,25 +1797,25 @@ BOOL wq_move(NSString *path, NSString *destDir, NSString **errorText)
     int to = wq_open_directory_flags(target, O_SEARCH);
     if (to < 0) { if (errorText) *errorText = wq_errno(errno); close(from); return NO; }
     const char *n = name.fileSystemRepresentation;
-    // RENAME_EXCL: never replaces an item that is already there.
-    int rc = renameatx_np(from, n, to, n, RENAME_EXCL);
-    if (rc != 0 && wq_is_denied(errno)) {
-        wq_grant(sourceParent);
-        wq_grant(target);
-        wq_grant(source);
-        rc = renameatx_np(from, n, to, n, RENAME_EXCL);
-    }
+    BOOL changed = NO;
+    BOOL ok = wq_rename_checked(from, n, to, n, source, @[sourceParent, target, source], identity, @"moveReady", source, &changed);
     int err = errno;
-    if (rc == 0) { fsync(to); fsync(from); }
+    if (ok) { fsync(to); fsync(from); }
     close(from);
     close(to);
-    wq_log(@"move: %@ -> %@: %@", path, destDir, rc == 0 ? @"OK" : wq_errno(err));
-    if (rc != 0 && errorText) {
+    wq_log(@"move: %@ -> %@: %@", path, destDir, ok ? @"OK" : changed ? @"changed since it was selected" : wq_errno(err));
+    if (!ok && changed) return wq_selection_changed(errorText);
+    if (!ok && errorText) {
         *errorText = err == EEXIST ? WQLocalizedFormat(@"An item named \"%@\" is already there", name)
                    : err == EXDEV ? WQLocalized(@"Items can't be moved to another volume")
                    : wq_errno(err);
     }
-    return rc == 0;
+    return ok;
+}
+
+BOOL wq_move(NSString *path, NSString *destDir, NSString **errorText)
+{
+    return wq_move_expecting(path, destDir, nil, errorText);
 }
 
 int wq_open_for_reading(NSString *path)
