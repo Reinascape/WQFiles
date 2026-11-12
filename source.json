@@ -21,6 +21,15 @@
       "category": "utilities",
       "versions": [
         {
+          "version": "0.9.4",
+          "buildVersion": "69",
+          "date": "2026-11-12",
+          "size": 647595,
+          "downloadURL": "https://github.com/kolbicz/WQFiles/releases/download/v0.9.4/WQFiles.ipa",
+          "localizedDescription": "New: delete folders with everything in them (backed up, restorable), Polish and Russian, filters in App Data, version in the device strip, Reset Access Cache. Fixed: backups with sockets, Share as ZIP of app folders, app names.",
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.3",
           "buildVersion": "59",
           "date": "2026-11-11",
