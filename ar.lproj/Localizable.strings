@@ -867,3 +867,5 @@
 "%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "%lu ملف (%@) إجمالاً، بما في ذلك كل محتويات المجلدات. يُنسخ كل ملف إلى النسخ الاحتياطية أولاً ويمكن استعادته من المحذوفة مؤخراً.";
 "%lu of %lu files" = "%lu من %lu ملف";
 "%lu files were deleted (copies are in Backups), then:\n%@" = "حُذف %lu ملف (النسخ في النسخ الاحتياطية)، ثم:\n%@";
+"%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "تم فحص %lu من التطبيقات والإضافات: لا يحتوي أي منها على 64 كيلوبايت أو أكثر في ذاكرة التخزين المؤقت والملفات المؤقتة.";
+"Crash Logs can't be fully measured on this device." = "لا يمكن قياس سجلات الأعطال بالكامل على هذا الجهاز.";

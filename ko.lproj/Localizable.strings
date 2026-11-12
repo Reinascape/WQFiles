@@ -871,3 +871,5 @@
 "%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "폴더 안의 모든 항목을 포함해 총 %lu개 파일(%@). 각 파일은 먼저 백업에 복사되며 최근 삭제된 항목에서 복원할 수 있습니다.";
 "%lu of %lu files" = "%lu / %lu개 파일";
 "%lu files were deleted (copies are in Backups), then:\n%@" = "%lu개 파일을 삭제했습니다(사본은 백업에 있음). 그다음:\n%@";
+"%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "앱 및 확장 프로그램 %lu개 확인: 캐시와 임시 파일이 64KB 이상인 항목이 없습니다.";
+"Crash Logs can't be fully measured on this device." = "이 기기에서는 충돌 로그를 완전히 측정할 수 없습니다.";

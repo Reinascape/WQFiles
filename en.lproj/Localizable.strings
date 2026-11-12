@@ -871,3 +871,5 @@
 "%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted.";
 "%lu of %lu files" = "%lu of %lu files";
 "%lu files were deleted (copies are in Backups), then:\n%@" = "%lu files were deleted (copies are in Backups), then:\n%@";
+"%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files.";
+"Crash Logs can't be fully measured on this device." = "Crash Logs can't be fully measured on this device.";

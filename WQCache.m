@@ -531,6 +531,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
         NSUInteger limitedContainers = 0;
         NSUInteger limitedMeasurements = 0;
         NSUInteger missingIdentities = 0;
+        NSUInteger checkedContainers = 0;
         __block unsigned long long foundBytes = 0;
         NSArray *roots = @[@"/private/var/mobile/Containers/Data/Application",
                            @"/private/var/mobile/Containers/Data/PluginKitPlugin"];
@@ -561,6 +562,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
         }
             if (!containers.count) [emptyRoots addObject:kind];
             NSUInteger idx = 0;
+            checkedContainers += containers.count;
             for (NSString *c in containers) {
                 if (cancellation.isCancelled) return;
                 idx++;
@@ -641,10 +643,8 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
             : safeCrashPath ? WQCacheMeasureDirectory(kCrashLogsPath, cancellation, &crash)
                             : WQCacheMeasurementLimited;
         if (crashState == WQCacheMeasurementCancelled) return;
-        if (crashState == WQCacheMeasurementLimited) {
-            scanLimited = YES;
-            limitedMeasurements++;
-        }
+        BOOL crashLimited = crashState == WQCacheMeasurementLimited;
+        if (crashLimited) scanLimited = YES;
         if (crashState == WQCacheMeasurementLimited || crash > 0) {
             WQCacheItem *logs = [WQCacheItem new];
             logs.name = WQLocalized(@"Crash Logs");
@@ -688,13 +688,27 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
                                                 [emptyRoots componentsJoinedByString:@" or "]);
             [notes insertObject:[empty stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@".。"]] atIndex:0];
         }
-        if (scanLimited) {
+        // Only app and extension problems make the scan incomplete; Crash
+        // Logs that can't be measured get their own sentence. A list without
+        // app rows says how many were checked (everything was already clean
+        // looked like a broken scan).
+        NSUInteger appRows = 0;
+        for (WQCacheItem *item in items) if (!item.crashLogs) appRows++;
+        NSMutableArray<NSString *> *sentences = [NSMutableArray new];
+        if (!appRows && checkedContainers && !failedEnumerations && !limitedContainers)
+            [sentences addObject:WQLocalizedFormat(@"%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files.",
+                                                   (unsigned long)checkedContainers)];
+        if (notes.count) {
             [notes addObject:WQLocalized(@"limited rows are excluded; the remaining rows can still be cleaned")];
-            note = WQLocalizedFormat(@"Scan incomplete: %@. See Log.", [notes componentsJoinedByString:@"; "]);
+            [sentences addObject:WQLocalizedFormat(@"Scan incomplete: %@. See Log.", [notes componentsJoinedByString:@"; "])];
         } else if (emptyRoots.count) {
-            note = WQLocalizedFormat(emptyRoots.count == 1 ? @"No %@ container found." : @"No %@ containers found.",
-                                     [emptyRoots componentsJoinedByString:@" or "]);
+            [sentences addObject:WQLocalizedFormat(emptyRoots.count == 1 ? @"No %@ container found." : @"No %@ containers found.",
+                                                   [emptyRoots componentsJoinedByString:@" or "])];
         }
+        if (crashLimited) [sentences addObject:WQLocalized(@"Crash Logs can't be fully measured on this device.")];
+        if (sentences.count) note = [sentences componentsJoinedByString:@" "];
+        wq_log(@"cache scan: %lu containers checked, %lu rows, %@ found%@", (unsigned long)checkedContainers, (unsigned long)appRows,
+               wq_size_text(foundBytes), crashLimited ? @", Crash Logs limited" : @"");
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation != self->_scanGeneration || cancellation.isCancelled) return;
             self->_items = items;

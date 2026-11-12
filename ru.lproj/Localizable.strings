@@ -871,3 +871,5 @@
 "%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "Всего файлов: %lu (%@), включая всё содержимое папок. Каждый файл сначала копируется в резервные копии, его можно восстановить в «Недавно удалённых».";
 "%lu of %lu files" = "%lu из %lu файлов";
 "%lu files were deleted (copies are in Backups), then:\n%@" = "Удалено файлов: %lu (копии в резервных копиях), затем:\n%@";
+"%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "Проверено приложений и расширений: %lu. Ни у одного нет 64 КБ или больше в кэше и временных файлах.";
+"Crash Logs can't be fully measured on this device." = "Журналы сбоев нельзя полностью измерить на этом устройстве.";

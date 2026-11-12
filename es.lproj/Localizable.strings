@@ -871,3 +871,5 @@
 "%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "%lu archivos (%@) en total, incluido todo lo que hay en las carpetas. Cada archivo se copia primero en Copias de seguridad y se puede restaurar desde Eliminado recientemente.";
 "%lu of %lu files" = "%lu de %lu archivos";
 "%lu files were deleted (copies are in Backups), then:\n%@" = "Se eliminaron %lu archivos (las copias están en Copias de seguridad); después:\n%@";
+"%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "%lu apps y extensiones revisadas: ninguna tiene 64 KB o más en cachés y archivos temporales.";
+"Crash Logs can't be fully measured on this device." = "Los registros de fallos no se pueden medir por completo en este dispositivo.";
