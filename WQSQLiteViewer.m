@@ -101,7 +101,10 @@ static BOOL wq_sqlite_copy(NSString *src, NSString *dst, NSString **error)
     if (wq_stat(wal, &st) && S_ISREG(st.st_mode) && st.st_size > 0) {
         NSString *walError = nil;
         _copiedWAL = wq_sqlite_copy(wal, [copy stringByAppendingString:@"-wal"], &walError);
-        if (!_copiedWAL) wq_log(@"sqlite: -wal of %@ not copied (%@); recent changes may be missing", path, walError);
+        if (!_copiedWAL) {
+            *error = WQLocalizedFormat(@"Cannot read this file: %@", walError ?: wal.lastPathComponent);
+            return nil;
+        }
     }
     // A copy taken while the app was writing may mix two versions: viewable,
     // but not something to write back.
