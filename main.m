@@ -3079,6 +3079,10 @@ static NSString *wq_language_name(NSString *code)
     WQAppsViewController *_apps;
     WQCacheCleanerViewController *_cacheCleaner;
     BOOL _checkingAccess;
+    // A failed startup check waits here until the start screen is in front
+    // with nothing presented over it.
+    NSArray<WQHealthCheck *> *_pendingHealthFailure;
+    BOOL _healthRetryScheduled;
 }
 
 - (void)didReceiveMemoryWarning
@@ -3140,11 +3144,14 @@ static NSString *wq_language_name(NSString *code)
 }
 
 // The startup check (WQHealth), once the start screen is on screen: it runs
-// in the background so nothing waits for it. A failure covers the app with
-// WQHealthViewController; warnings are shown once per build.
+// in the background so nothing waits for it, and browsing stays possible. A
+// failure covers the app with WQHealthViewController once the user is back
+// on the start screen with nothing open over it (never over an action, a
+// confirmation or a progress sheet); warnings are shown once per build.
 - (void)viewDidAppear:(BOOL)animated
 {
     [super viewDidAppear:animated];
+    [self presentPendingHealthFailure];
     static BOOL checked;
     if (checked) return;
     checked = YES;
@@ -3171,6 +3178,42 @@ static NSString *wq_language_name(NSString *code)
     WQHealthState worst = wq_health_worst(checks);
     if (worst == WQHealthWarning) { [self showHealthWarnings:checks]; return; }
     if (worst < WQHealthFailed) return;
+    _pendingHealthFailure = checks;
+    [self presentPendingHealthFailure];
+}
+
+// Idle: the start screen is the visible screen, the app is active and
+// nothing (alert, sheet, scan window) is presented.
+- (BOOL)healthFailureCanPresent
+{
+    UIViewController *host = self.navigationController ?: self;
+    if (!self.view.window || host.presentedViewController) return NO;
+    if (self.navigationController && self.navigationController.topViewController != self) return NO;
+    return UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
+}
+
+- (void)presentPendingHealthFailure
+{
+    NSArray<WQHealthCheck *> *checks = _pendingHealthFailure;
+    if (!checks) return;
+    if (![self healthFailureCanPresent]) {
+        static BOOL logged;
+        if (!logged) {
+            logged = YES;
+            wq_log(@"health: check failed; the result is shown when the start screen is back in front");
+        }
+        if (_healthRetryScheduled) return;
+        _healthRetryScheduled = YES;
+        __weak typeof(self) weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            typeof(self) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            strongSelf->_healthRetryScheduled = NO;
+            [strongSelf presentPendingHealthFailure];
+        });
+        return;
+    }
+    _pendingHealthFailure = nil;
     WQHealthViewController *health = [[WQHealthViewController alloc] initWithChecks:checks];
     __weak typeof(self) weakSelf = self;
     health.onPassed = ^(NSArray<WQHealthCheck *> *passed) {
@@ -3181,10 +3224,7 @@ static NSString *wq_language_name(NSString *code)
     WQNavigationController *nav = [[WQNavigationController alloc] initWithRootViewController:health];
     nav.modalPresentationStyle = UIModalPresentationFullScreen;
     nav.modalInPresentation = YES;
-    // Over whatever is open by now.
-    UIViewController *host = self.navigationController ?: self;
-    while (host.presentedViewController) host = host.presentedViewController;
-    [host presentViewController:nav animated:YES completion:nil];
+    [(self.navigationController ?: self) presentViewController:nav animated:YES completion:nil];
 }
 
 // Each set of warnings once per build, so the same notice doesn't repeat on

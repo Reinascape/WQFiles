@@ -30,6 +30,9 @@ require(main, "wq_backup_original_path(item.path)", "typed backup path derivatio
 require(main, "initWithPath:wq_backup_root() title:WQLocalizedNullable(@\"Backups\")", "Backups root navigation")
 require(main, "if (!_version)", "nil editor version refusal")
 forbid(main, "childPaths.count) ? nil : error", "count-based enumeration success check")
+health_present = main.split("- (void)presentPendingHealthFailure", 1)[1].split("// Each set of warnings", 1)[0]
+require(health_present, "if (![self healthFailureCanPresent])", "startup failure waits for an idle start screen")
+forbid(health_present, "while (host.presentedViewController)", "startup failure presented over open actions")
 forbid(main, "wq_backup_root().stringByDeletingLastPathComponent title:@\"Backups\"", "parent-path Backups navigation")
 forbid(main, "item.isDir = S_ISDIR(target.st_mode);", "symlink target directory override")
 require(main, "WQ Files does not follow symbolic links", "symlink UI contract")
