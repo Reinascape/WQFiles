@@ -28,7 +28,8 @@ BOOL wq_grant(NSString *path);
 // refuse. Renames, never deletes. Logs what it did.
 BOOL wq_reset_access_cache(NSString *_Nullable *_Nullable errorText);
 
-// Directory listing; asks for access when the plain call is refused.
+// Directory listing; asks for access when the plain call is refused. On
+// failure errno holds the reason (EACCES/EPERM for a refusal).
 NSArray<NSString *> *_Nullable wq_list(NSString *dir, NSString *_Nullable *_Nullable errorText);
 
 // Reads a whole file (up to maxBytes; 0 = no limit).
@@ -181,6 +182,14 @@ BOOL wq_purge_contents_cancellable(NSString *dir, unsigned long long *freed,
 // copies. This is not an all-children transaction: callers still own tree rollback.
 // Either side may be another app's container. Returns NO if anything failed.
 BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString *_Nullable *_Nullable errorText);
+// Creates the new folder dstDir as a copy of srcDir's contents, all or
+// nothing: the items are copied into a private sibling first (never replacing
+// anything there), which is renamed to dstDir only when complete and never
+// over an existing item. `cancelled` (optional) is checked between items and
+// right before publication; a failed or cancelled copy removes the sibling and
+// leaves nothing at dstDir. Once it returns YES the copy is published.
+BOOL wq_copy_tree_new(NSString *srcDir, NSString *dstDir, BOOL (^_Nullable cancelled)(void),
+                      NSString *_Nullable *_Nullable errorText);
 
 // MCM container identifier (bundle or group id) of a container folder.
 NSString *_Nullable wq_container_label(NSString *dir);

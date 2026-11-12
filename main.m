@@ -1490,30 +1490,43 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     return [NSString stringWithFormat:@"%@ %@", base, NSUUID.UUID.UUIDString];
 }
 
-// Runs a long ZIP job with a progress alert that can cancel it.
+// Runs a long ZIP job with a progress alert that can cancel it. The job calls
+// `finishing` before its final step (publishing the result); a cancel that
+// arrives too late to stop it is reported as such, not as nothing done.
 - (void)runArchiveJob:(NSString *)title failure:(NSString *)failureTitle
-                 work:(BOOL (^)(WQArchiveCancelled cancelled, WQArchiveProgress progress, NSString **error, NSString **note))work
+                 work:(BOOL (^)(WQArchiveCancelled cancelled, WQArchiveProgress progress, void (^finishing)(void),
+                                NSString **error, NSString **note))work
 {
     WQScanCancellation *cancellation = [WQScanCancellation new];
     UIAlertController *hud = wq_alert_controller(title, @"Starting…", UIAlertControllerStyleAlert);
     [hud addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, ^(UIAlertAction *__unused a) { [cancellation cancel]; })];
     [self presentViewController:hud animated:YES completion:nil];
     __block CFAbsoluteTime lastUpdate = 0;
+    __block BOOL finishingShown = NO;   // main queue only
     WQArchiveProgress progress = ^(unsigned long long bytes) {
         CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
         if (now - lastUpdate < 0.25) return;
         lastUpdate = now;
         NSString *text = wq_size_text(bytes);
-        dispatch_async(dispatch_get_main_queue(), ^{ hud.message = text; });
+        dispatch_async(dispatch_get_main_queue(), ^{ if (!finishingShown) hud.message = text; });
+    };
+    void (^finishing)(void) = ^{
+        dispatch_async(dispatch_get_main_queue(), ^{ finishingShown = YES; hud.message = WQLocalized(@"Finishing…"); });
     };
     WQArchiveCancelled cancelled = ^BOOL { return cancellation.isCancelled; };
     dispatch_async(wq_io(), ^{
         NSString *error = nil, *note = nil;
-        BOOL ok = work(cancelled, progress, &error, &note);
+        BOOL ok = work(cancelled, progress, finishing, &error, &note);
         BOOL wasCancelled = cancellation.isCancelled;
+        // A clean cancel leaves nothing behind and needs no message; any other
+        // failure (including a cancel that couldn't clean up) is reported.
+        BOOL quietCancel = !ok && wasCancelled && (!error || [error isEqualToString:@"Cancelled"]);
         dispatch_async(dispatch_get_main_queue(), ^{
             void (^finish)(void) = ^{
-                if (!ok && !wasCancelled) wq_alert(self, failureTitle, error ?: @"Unknown error");
+                if (!ok && !quietCancel) wq_alert(self, failureTitle, error ?: @"Unknown error");
+                else if (ok && wasCancelled)
+                    wq_alert(self, title, note ? [NSString stringWithFormat:@"%@\n\n%@", WQLocalized(@"It had already finished when you cancelled, so the result was kept."), note]
+                                               : WQLocalized(@"It had already finished when you cancelled, so the result was kept."));
                 else if (ok && note) wq_alert(self, title, note);
                 [self reload];
             };
@@ -1537,14 +1550,16 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     NSString *zipName = [self unusedName:base extension:@"zip"];
     NSString *dest = [_path stringByAppendingPathComponent:zipName];
     [self runArchiveJob:WQLocalized(@"Compressing") failure:WQLocalizedNullable(@"Cannot compress")
-                   work:^BOOL(WQArchiveCancelled cancelled, WQArchiveProgress progress, NSString **error, NSString **note) {
+                   work:^BOOL(WQArchiveCancelled cancelled, WQArchiveProgress progress, void (^finishing)(void),
+                              NSString **error, NSString **note) {
         NSString *work = wq_temp_work_dir(@"wq-zip");
         if (!work) { *error = @"Can't create a temporary folder"; return NO; }
         NSString *local = [work stringByAppendingPathComponent:zipName];
         NSUInteger skipped = 0;
         BOOL ok = wq_zip_write(paths, local, wq_app_archive_io(), cancelled, progress, &skipped, error);
         if (ok && cancelled()) ok = NO;
-        if (ok) ok = wq_create_file_from(dest, local, error);
+        // Writing the finished ZIP into place can't be interrupted halfway.
+        if (ok) { finishing(); ok = wq_create_file_from(dest, local, error); }
         [NSFileManager.defaultManager removeItemAtPath:work error:nil];
         wq_log(@"compress: %lu item(s) -> %@: %@", (unsigned long)paths.count, dest, ok ? @"OK" : *error);
         if (ok && skipped)
@@ -1563,7 +1578,8 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     NSString *folder = [self unusedName:base.length ? base : @"Archive" extension:nil];
     NSString *dest = [_path stringByAppendingPathComponent:folder];
     [self runArchiveJob:WQLocalized(@"Extracting") failure:WQLocalizedNullable(@"Cannot extract")
-                   work:^BOOL(WQArchiveCancelled cancelled, WQArchiveProgress progress, NSString **error, NSString **note) {
+                   work:^BOOL(WQArchiveCancelled cancelled, WQArchiveProgress progress, void (^finishing)(void),
+                              NSString **error, NSString **note) {
         NSString *work = wq_temp_work_dir(@"wq-unzip");
         if (!work) { *error = @"Can't create a temporary folder"; return NO; }
         NSString *local = [work stringByAppendingPathComponent:folder];
@@ -1577,11 +1593,10 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         NSUInteger files = 0, skipped = 0;
         BOOL ok = wq_zip_extract(zipPath, local, wq_app_archive_io(), limit, cancelled, progress, &files, &skipped, error);
         if (ok && cancelled()) ok = NO;
-        if (ok) ok = wq_create_dir(dest, error);
-        if (ok && !wq_copy_contents(local, dest, error)) {
-            ok = NO;
-            *error = WQLocalizedFormat(@"%@\n\nSome files may already be in %@.", *error ?: WQLocalized(@"Copying failed."), folder);
-        }
+        // All or nothing: copied next to the destination, then published by
+        // one rename that never replaces an item that appeared meanwhile.
+        // Cancelling still works until that rename.
+        if (ok) { finishing(); ok = wq_copy_tree_new(local, dest, cancelled, error); }
         [NSFileManager.defaultManager removeItemAtPath:work error:nil];
         wq_log(@"extract: %@ -> %@: %@ (%lu files, %lu skipped)", zipPath, dest, ok ? @"OK" : *error,
                (unsigned long)files, (unsigned long)skipped);
@@ -2438,12 +2453,11 @@ static NSString *wq_free_name_in(NSString *dir, NSString *name, NSMutableSet<NSS
                 NSError *coordError = nil;
                 [[NSFileCoordinator new] coordinateReadingItemAtURL:url options:0 error:&coordError byAccessor:^(NSURL *readable) {
                     NSString *copyError = nil;
-                    ok = wq_create_dir(dest, &copyError) && wq_copy_contents(readable.path, dest, &copyError);
+                    // All or nothing, never replacing an item that appeared meanwhile.
+                    ok = wq_copy_tree_new(readable.path, dest, nil, &copyError);
                     e = copyError;
                 }];
                 if (coordError) e = e ?: coordError.localizedDescription;
-                if (!ok && e && wq_stat(dest, &(struct stat){0}))
-                    e = [NSString stringWithFormat:@"%@\n\nPart of it may already be in %@.", e, name];
             } else {
                 e = WQLocalized(@"No free name in this folder");
             }

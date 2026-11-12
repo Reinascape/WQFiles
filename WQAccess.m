@@ -758,6 +758,14 @@ NSArray<NSString *> *wq_list(NSString *dir, NSString **errorText)
     NSArray *items = [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:&error];
     if (!items && wq_grant(dir)) items = [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:&error];
     if (!items && errorText) *errorText = error.localizedDescription ?: WQLocalized(@"Cannot list this folder");
+    if (!items) {
+        // Keep the reason in errno, so callers can tell a refusal from a failure.
+        int err = [error.domain isEqualToString:NSCocoaErrorDomain] && error.code == NSFileReadNoPermissionError ? EACCES : EIO;
+        for (NSError *e = error; e; e = e.userInfo[NSUnderlyingErrorKey]) {
+            if ([e.domain isEqualToString:NSPOSIXErrorDomain] && e.code > 0) { err = (int)e.code; break; }
+        }
+        errno = err;
+    }
     return items;
 }
 
@@ -2621,7 +2629,10 @@ static BOOL wq_is_special_file(NSString *path)
 }
 @end
 
-BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString **errorText)
+// `replace`: a same-named destination item is swapped out (restore callers);
+// otherwise installation is RENAME_EXCL and such an item fails the copy.
+static BOOL wq_copy_contents_mode(NSString *srcDir, NSString *dstDir, BOOL replace,
+                                  BOOL (^cancelled)(void), NSString **errorText)
 {
     srcDir = WQCanonicalVarPath(srcDir);
     dstDir = WQCanonicalVarPath(dstDir);
@@ -2652,6 +2663,7 @@ BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString **errorText)
     BOOL allOk = YES;
     NSString *firstFailure = nil;
     for (NSString *name in children) {
+        if (cancelled && cancelled()) { allOk = NO; firstFailure = firstFailure ?: @"Cancelled"; break; }
         if (!wq_directory_current(srcDir, source) || !wq_directory_current(dstDir, destination)) {
             allOk = NO; firstFailure = firstFailure ?: WQLocalized(@"A copy root changed during copying"); break;
         }
@@ -2687,7 +2699,10 @@ BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString **errorText)
             if (ok) {
                 // Swap retains the previous destination at stage/New until the
                 // copy has completed and the new namespace has been flushed.
-                installed = renameatx_np(stage, "New", destination, name.fileSystemRepresentation, exists ? RENAME_SWAP : RENAME_EXCL) == 0;
+                // Without `replace`, RENAME_EXCL fails (EEXIST) on any item
+                // that appeared meanwhile, and that item stays untouched.
+                installed = renameatx_np(stage, "New", destination, name.fileSystemRepresentation,
+                                         exists && replace ? RENAME_SWAP : RENAME_EXCL) == 0;
                 ok = installed && fsync(destination) == 0 && fsync(stage) == 0;
             }
         }
@@ -2709,6 +2724,40 @@ BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString **errorText)
     wq_log(@"copy: %@ -> %@ (%lu items) %@%@", srcDir, dstDir, (unsigned long)children.count, allOk ? @"OK" : @"with errors",
            skipper.skipped ? [NSString stringWithFormat:@"; %lu sockets or pipes left out", (unsigned long)skipper.skipped] : @"");
     return allOk;
+}
+
+BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString **errorText)
+{
+    return wq_copy_contents_mode(srcDir, dstDir, YES, nil, errorText);
+}
+
+BOOL wq_copy_tree_new(NSString *srcDir, NSString *dstDir, BOOL (^cancelled)(void), NSString **errorText)
+{
+    NSString *parent = dstDir.stringByDeletingLastPathComponent;
+    NSString *stage = [parent stringByAppendingPathComponent:[@".wq-new-" stringByAppendingString:NSUUID.UUID.UUIDString]];
+    struct stat st;
+    if (wq_stat(dstDir, &st)) {
+        if (errorText) *errorText = WQLocalized(@"An item with that name already exists");
+        return NO;
+    }
+    if (!wq_create_dir(stage, errorText)) return NO;
+    NSString *error = nil;
+    BOOL ok = wq_copy_contents_mode(srcDir, stage, NO, cancelled, &error);
+    WQ_TREE_HOOK(@"publishReady", dstDir);
+    if (ok && cancelled && cancelled()) { ok = NO; error = @"Cancelled"; }
+    // Publication: one no-replace rename, after which the copy is complete.
+    if (ok) ok = wq_rename(stage, dstDir.lastPathComponent, &error);
+    if (!ok) {
+        // Only this call's private staging folder is removed (no backups).
+        unsigned long long freed = 0;
+        BOOL removed = wq_purge_contents(stage, &freed) && wq_delete(stage, NULL);
+        if (!removed) {
+            wq_log(@"copy tree: could not remove staging folder %@", stage);
+            error = WQLocalizedFormat(@"%@ An unfinished copy remains in %@.", error ?: WQLocalized(@"Copying failed."), stage.lastPathComponent);
+        }
+    }
+    if (!ok && errorText) *errorText = error ?: WQLocalized(@"Copying failed.");
+    return ok;
 }
 
 // Container-manager enumeration is a second, permission-independent way to

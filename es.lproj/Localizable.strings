@@ -881,3 +881,14 @@
 "Items not deleted: %lu of %lu.\n\n%@" = "Elementos sin eliminar: %lu de %lu.\n\n%@";
 "This text has bytes that aren't plain UTF-8 (invalid or NUL bytes), so editing it here would change bytes you didn't touch. Use SQL with a hex literal, for example UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1." = "Este texto tiene bytes que no son UTF-8 puro (bytes no válidos o NUL), así que editarlo aquí cambiaría bytes que no has tocado. Usa SQL con un literal hexadecimal, por ejemplo UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1.";
 "The value was changed in the copy, but the row could not be read again. Go back to see the current rows." = "El valor se cambió en la copia, pero no se pudo volver a leer la fila. Vuelve atrás para ver las filas actuales.";
+"The ZIP file is ambiguous (it has more than one directory)" = "El archivo ZIP es ambiguo (tiene más de un directorio)";
+"This ZIP has too many items (more than %lu)." = "Este ZIP tiene demasiados elementos (más de %lu).";
+"The ZIP contains a path that is too long or too deep (%@); nothing was extracted." = "El ZIP contiene una ruta demasiado larga o profunda (%@); no se extrajo nada.";
+"1 item couldn't be read (no permission) and is not in the ZIP." = "1 elemento no se pudo leer (sin permiso) y no está en el ZIP.";
+"%lu items couldn't be read (no permission) and are not in the ZIP." = "%lu elementos no se pudieron leer (sin permiso) y no están en el ZIP.";
+"Some items left out" = "Algunos elementos omitidos";
+"The data names an invalid app identifier (%@)." = "Los datos indican un identificador de app no válido (%@).";
+"This data names more than one app (%@). Importing it as a backup of %@ (%@) and restoring it can break the app." = "Estos datos indican más de una app (%@). Importarlos como copia de seguridad de %@ (%@) y restaurarlos puede dañar la app.";
+"%@ An unfinished copy remains in %@." = "%@ Queda una copia incompleta en %@.";
+"Finishing…" = "Finalizando…";
+"It had already finished when you cancelled, so the result was kept." = "Ya había terminado cuando cancelaste, así que se conservó el resultado.";

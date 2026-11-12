@@ -225,6 +225,7 @@ void wq_share_folder(UIViewController *host, NSString *dir, NSString *zipName, U
         NSString *why = zipError ?: @"Could not create the ZIP";
         wq_log(@"share zip: %@ -> %@ %@ (%lu unreadable, %lu links or special files left out)", dir, zip.lastPathComponent,
                ok ? @"OK" : why, (unsigned long)io.unreadable, (unsigned long)skipped);
+        NSUInteger unreadable = io.unreadable;
         dispatch_async(dispatch_get_main_queue(), ^{
             UIViewController *strongHost = preparation.host;
             BOOL hudPresented = strongHost && strongHost.presentedViewController == hud;
@@ -238,7 +239,22 @@ void wq_share_folder(UIViewController *host, NSString *dir, NSString *zipName, U
                     }
                     return;
                 }
-                if (!wq_present_share(strongHost, zip, outDir, source)) wq_remove_export(outDir);
+                if (unreadable == 0) {
+                    if (!wq_present_share(strongHost, zip, outDir, source)) wq_remove_export(outDir);
+                    return;
+                }
+                // Say that the ZIP is incomplete before it goes anywhere.
+                NSString *note = unreadable == 1
+                    ? WQLocalized(@"1 item couldn't be read (no permission) and is not in the ZIP.")
+                    : WQLocalizedFormat(@"%lu items couldn't be read (no permission) and are not in the ZIP.", (unsigned long)unreadable);
+                UIAlertController *ask = wq_alert_controller(@"Some items left out", note, UIAlertControllerStyleAlert);
+                [ask addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, ^(UIAlertAction *__unused a) {
+                    wq_remove_export(outDir);
+                })];
+                [ask addAction:wq_alert_action(@"Share", UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) {
+                    if (!wq_present_share(strongHost, zip, outDir, source)) wq_remove_export(outDir);
+                })];
+                [strongHost presentViewController:ask animated:YES completion:nil];
             };
             if (hudPresented) [strongHost dismissViewControllerAnimated:YES completion:finish];
             else finish();

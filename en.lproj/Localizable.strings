@@ -881,3 +881,14 @@
 "Items not deleted: %lu of %lu.\n\n%@" = "Items not deleted: %lu of %lu.\n\n%@";
 "This text has bytes that aren't plain UTF-8 (invalid or NUL bytes), so editing it here would change bytes you didn't touch. Use SQL with a hex literal, for example UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1." = "This text has bytes that aren't plain UTF-8 (invalid or NUL bytes), so editing it here would change bytes you didn't touch. Use SQL with a hex literal, for example UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1.";
 "The value was changed in the copy, but the row could not be read again. Go back to see the current rows." = "The value was changed in the copy, but the row could not be read again. Go back to see the current rows.";
+"The ZIP file is ambiguous (it has more than one directory)" = "The ZIP file is ambiguous (it has more than one directory)";
+"This ZIP has too many items (more than %lu)." = "This ZIP has too many items (more than %lu).";
+"The ZIP contains a path that is too long or too deep (%@); nothing was extracted." = "The ZIP contains a path that is too long or too deep (%@); nothing was extracted.";
+"1 item couldn't be read (no permission) and is not in the ZIP." = "1 item couldn't be read (no permission) and is not in the ZIP.";
+"%lu items couldn't be read (no permission) and are not in the ZIP." = "%lu items couldn't be read (no permission) and are not in the ZIP.";
+"Some items left out" = "Some items left out";
+"The data names an invalid app identifier (%@)." = "The data names an invalid app identifier (%@).";
+"This data names more than one app (%@). Importing it as a backup of %@ (%@) and restoring it can break the app." = "This data names more than one app (%@). Importing it as a backup of %@ (%@) and restoring it can break the app.";
+"%@ An unfinished copy remains in %@." = "%@ An unfinished copy remains in %@.";
+"Finishing…" = "Finishing…";
+"It had already finished when you cancelled, so the result was kept." = "It had already finished when you cancelled, so the result was kept.";
