@@ -875,3 +875,5 @@
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "Gesicherte Dateien, die gelöscht werden: %lu. Dazu gehören auch andere Dateien in den ausgewählten Backups. Ältere Kopien können weiterhin verfügbar sein.";
 "Items not moved: %lu of %lu.\n\n%@" = "Nicht verschoben: %lu von %lu.\n\n%@";
 "Items not deleted: %lu of %lu.\n\n%@" = "Nicht gelöscht: %lu von %lu.\n\n%@";
+"This text has bytes that aren't plain UTF-8 (invalid or NUL bytes), so editing it here would change bytes you didn't touch. Use SQL with a hex literal, for example UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1." = "Dieser Text enthält Bytes, die kein reines UTF-8 sind (ungültige oder NUL-Bytes). Eine Bearbeitung hier würde Bytes ändern, die du nicht angefasst hast. Verwende SQL mit einem Hex-Literal, zum Beispiel UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1.";
+"The value was changed in the copy, but the row could not be read again. Go back to see the current rows." = "Der Wert wurde in der Kopie geändert, aber die Zeile konnte nicht erneut gelesen werden. Geh zurück, um die aktuellen Zeilen zu sehen.";

@@ -879,3 +879,5 @@
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "将删除 %lu 个已备份的文件，包括所选备份中的其他文件。较早的副本可能仍然可用。";
 "Items not moved: %lu of %lu.\n\n%@" = "未移动: %lu / %lu.\n\n%@";
 "Items not deleted: %lu of %lu.\n\n%@" = "未删除: %lu / %lu.\n\n%@";
+"This text has bytes that aren't plain UTF-8 (invalid or NUL bytes), so editing it here would change bytes you didn't touch. Use SQL with a hex literal, for example UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1." = "此文本包含非纯 UTF-8 的字节（无效字节或 NUL 字节），在此编辑会改动您未触及的字节。请使用带十六进制字面量的 SQL，例如 UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1。";
+"The value was changed in the copy, but the row could not be read again. Go back to see the current rows." = "副本中的值已更改，但无法重新读取该行。请返回查看当前的行。";

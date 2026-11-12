@@ -879,3 +879,5 @@
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "선택한 백업의 다른 파일을 포함해 백업된 파일 %lu개를 삭제합니다. 이전 사본은 남아 있을 수 있습니다.";
 "Items not moved: %lu of %lu.\n\n%@" = "이동하지 못한 항목: %lu / %lu.\n\n%@";
 "Items not deleted: %lu of %lu.\n\n%@" = "삭제하지 못한 항목: %lu / %lu.\n\n%@";
+"This text has bytes that aren't plain UTF-8 (invalid or NUL bytes), so editing it here would change bytes you didn't touch. Use SQL with a hex literal, for example UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1." = "이 텍스트에는 순수 UTF-8이 아닌 바이트(잘못된 바이트 또는 NUL 바이트)가 있어 여기서 편집하면 건드리지 않은 바이트까지 바뀝니다. 16진수 리터럴과 함께 SQL을 사용하십시오. 예: UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1.";
+"The value was changed in the copy, but the row could not be read again. Go back to see the current rows." = "복사본의 값은 변경되었지만 행을 다시 읽을 수 없습니다. 돌아가서 현재 행을 확인하십시오.";

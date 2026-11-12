@@ -875,3 +875,5 @@
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "عدد الملفات التي ستُحذف من النسخ الاحتياطية: %lu، بما فيها ملفات أخرى في النسخ المحددة. قد تظل النسخ الأقدم متاحة.";
 "Items not moved: %lu of %lu.\n\n%@" = "العناصر التي تعذّر نقلها: %lu من %lu.\n\n%@";
 "Items not deleted: %lu of %lu.\n\n%@" = "العناصر التي تعذّر حذفها: %lu من %lu.\n\n%@";
+"This text has bytes that aren't plain UTF-8 (invalid or NUL bytes), so editing it here would change bytes you didn't touch. Use SQL with a hex literal, for example UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1." = "يحتوي هذا النص على بايتات ليست UTF-8 خالصة (بايتات غير صالحة أو NUL)، لذا فإن تحريره هنا سيغيّر بايتات لم تلمسها. استخدم SQL مع قيمة ست عشرية حرفية، مثلاً UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1.";
+"The value was changed in the copy, but the row could not be read again. Go back to see the current rows." = "تم تغيير القيمة في النسخة، لكن تعذّرت قراءة الصف مرة أخرى. ارجع لرؤية الصفوف الحالية.";

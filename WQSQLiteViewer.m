@@ -11,6 +11,7 @@
 
 #import "WQSQLiteViewer.h"
 #import "WQSQLiteSave.h"
+#import "WQSQLiteSupport.h"
 #import "WQEditing.h"
 #import "WQAccess.h"
 #import "WQSharing.h"
@@ -180,54 +181,6 @@ static NSString *wq_sqlite_rowid_alias(sqlite3 *db, NSString *table)
     return nil;
 }
 
-static NSString *wq_sqlite_hex(const uint8_t *bytes, int length, int limit)
-{
-    NSMutableString *hex = [NSMutableString new];
-    for (int i = 0; i < length && i < limit; i++) [hex appendFormat:@"%02x%s", bytes[i], (i % 4 == 3) ? " " : ""];
-    if (length > limit) [hex appendString:@"…"];
-    return hex;
-}
-
-// A column value as display text; `full` shows long text and blobs in more detail.
-static NSString *wq_sqlite_value(sqlite3_stmt *stmt, int column, BOOL full)
-{
-    switch (sqlite3_column_type(stmt, column)) {
-        case SQLITE_NULL: return WQLocalized(@"NULL");
-        case SQLITE_INTEGER: return [NSString stringWithFormat:@"%lld", sqlite3_column_int64(stmt, column)];
-        case SQLITE_FLOAT: return [NSString stringWithFormat:@"%.15g", sqlite3_column_double(stmt, column)];
-        case SQLITE_BLOB: {
-            const uint8_t *bytes = sqlite3_column_blob(stmt, column);
-            int length = sqlite3_column_bytes(stmt, column);
-            if (length >= 8 && bytes && memcmp(bytes, "bplist0", 7) == 0)
-                return WQLocalizedFormat(@"<binary plist, %d bytes>", length);
-            NSString *hex = bytes ? wq_sqlite_hex(bytes, length, full ? 512 : 16) : @"";
-            return WQLocalizedFormat(@"<%d bytes> %@", length, hex);
-        }
-        default: {
-            const unsigned char *text = sqlite3_column_text(stmt, column);
-            NSString *s = text ? [NSString stringWithUTF8String:(const char *)text] : nil;
-            if (!s) return WQLocalized(@"<text not UTF-8>");
-            if (!full && s.length > 200) s = [[s substringToIndex:200] stringByAppendingString:@"…"];
-            return s;
-        }
-    }
-}
-
-static NSString *wq_sqlite_csv_field(sqlite3_stmt *stmt, int column)
-{
-    if (sqlite3_column_type(stmt, column) == SQLITE_NULL) return @"";
-    if (sqlite3_column_type(stmt, column) == SQLITE_BLOB) {
-        const uint8_t *bytes = sqlite3_column_blob(stmt, column);
-        int length = sqlite3_column_bytes(stmt, column);
-        NSData *data = bytes ? [NSData dataWithBytes:bytes length:(NSUInteger)length] : [NSData data];
-        return [@"base64:" stringByAppendingString:[data base64EncodedStringWithOptions:0]];
-    }
-    NSString *value = wq_sqlite_value(stmt, column, YES);
-    if ([value rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@",\"\n\r"]].location == NSNotFound)
-        return value;
-    return [NSString stringWithFormat:@"\"%@\"", [value stringByReplacingOccurrencesOfString:@"\"" withString:@"\"\""]];
-}
-
 #pragma mark - Row detail
 
 // Text typed for a field, bound the way the field held its value before:
@@ -246,7 +199,8 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
         sqlite3_bind_double(stmt, index, d);
         return;
     }
-    sqlite3_bind_text(stmt, index, text.UTF8String, -1, SQLITE_TRANSIENT);
+    NSData *utf8 = [text dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+    sqlite3_bind_text(stmt, index, utf8.length ? utf8.bytes : "", (int)utf8.length, SQLITE_TRANSIENT);
 }
 
 @interface WQSQLiteRowViewController : UITableViewController <WQUnsavedEditing>
@@ -324,6 +278,10 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
         wq_alert(self, @"Can't edit here", @"Binary values can't be edited here. Use SQL with a hex literal, for example UPDATE t SET c = X'00ff' WHERE rowid = 1.");
         return;
     }
+    if (type == WQSQLiteTextRaw) {
+        wq_alert(self, @"Can't edit here", @"This text has bytes that aren't plain UTF-8 (invalid or NUL bytes), so editing it here would change bytes you didn't touch. Use SQL with a hex literal, for example UPDATE t SET c = CAST(X'610062' AS TEXT) WHERE rowid = 1.");
+        return;
+    }
     NSString *name = _columns[column];
     UIAlertController *alert = wq_alert_controller(name, nil, UIAlertControllerStyleAlert);
     NSString *current = type == SQLITE_NULL ? @"" : _values[column];
@@ -385,8 +343,9 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
                     values = [NSMutableArray new];
                     types = [NSMutableArray new];
                     for (int i = 0; i < (int)count; i++) {
-                        [values addObject:wq_sqlite_value(stmt, i, YES)];
-                        [types addObject:@(sqlite3_column_type(stmt, i))];
+                        int kind = 0;
+                        [values addObject:wq_sqlite_value(stmt, i, YES, &kind)];
+                        [types addObject:@(kind)];
                     }
                 }
             }
@@ -401,6 +360,11 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
                 self->_values = values;
                 self->_types = types;
                 if (self.onChange) self.onChange(@(rowid), @(updatedRowid), values, types);
+            } else {
+                // The list re-reads itself (the generation changed); this
+                // screen would show the old values, so stop offering edits.
+                self->_table = nil;
+                wq_alert(self, @"Done", @"The value was changed in the copy, but the row could not be read again. Go back to see the current rows.");
             }
             [self.tableView reloadData];
         });
@@ -443,8 +407,16 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
     NSString *_table, *_alias;       // _alias: how this table's rowid is reached, if it has one
     BOOL _aliasResolved;
     NSUInteger _generation;
+    NSUInteger _loadEpoch;            // bumps when the shown rows are thrown away
     BOOL _loading, _done;
     NSString *_error;
+    NSMutableArray<NSString *> *_exportDirs;
+    BOOL _exporting;
+}
+
+- (void)dealloc
+{
+    for (NSString *dir in _exportDirs) [NSFileManager.defaultManager removeItemAtPath:dir error:nil];
 }
 
 - (instancetype)initWithSnapshot:(WQSQLiteSnapshot *)snapshot table:(NSString *)table
@@ -468,6 +440,7 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
     // Changed through SQL (or another screen) since these rows were read.
     if (_generation != _snapshot.generation && (_rows.count || _done)) {
         _generation = _snapshot.generation;
+        _loadEpoch++;
         [_rows removeAllObjects];
         [_types removeAllObjects];
         [_rowids removeAllObjects];
@@ -517,6 +490,9 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
     BOOL aliasResolved = _aliasResolved;
     NSString *baseSQL = _sql;
     NSUInteger limit = _limit;
+    // The page belongs to the rows shown now: a reset, a delete or an edit
+    // while it loads makes its offset stale, so it is dropped and re-read.
+    NSUInteger epoch = _loadEpoch, generation = _generation;
     dispatch_async(snapshot.queue, ^{
         NSString *alias = aliasResolved ? knownAlias : (table ? wq_sqlite_rowid_alias(snapshot.db, table) : nil);
         // Tables page with LIMIT/OFFSET (with their rowid first, if they have
@@ -543,8 +519,9 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
                 NSMutableArray *values = [NSMutableArray arrayWithCapacity:(NSUInteger)count];
                 NSMutableArray *kinds = [NSMutableArray arrayWithCapacity:(NSUInteger)count];
                 for (int i = first; i < count; i++) {
-                    [values addObject:wq_sqlite_value(stmt, i, YES)];
-                    [kinds addObject:@(sqlite3_column_type(stmt, i))];
+                    int kind = 0;
+                    [values addObject:wq_sqlite_value(stmt, i, YES, &kind)];
+                    [kinds addObject:@(kind)];
                 }
                 [rows addObject:values];
                 [types addObject:kinds];
@@ -555,6 +532,10 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
         sqlite3_finalize(stmt);
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_loading = NO;
+            if (epoch != self->_loadEpoch || generation != self->_generation || snapshot != self->_snapshot) {
+                [self loadMore];
+                return;
+            }
             self->_alias = alias;
             self->_aliasResolved = YES;
             if (error) { self->_error = error; self->_done = YES; [self.tableView reloadData]; return; }
@@ -682,40 +663,35 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
 
 - (void)exportCSV:(UIBarButtonItem *)sender
 {
+    if (_exporting) return;
     WQSQLiteSnapshot *snapshot = _snapshot;
     NSString *sql = _sql;
     NSString *name = [[_exportName stringByReplacingOccurrencesOfString:@"/" withString:@"_"] stringByAppendingPathExtension:@"csv"];
-    NSString *dir = [NSTemporaryDirectory() stringByAppendingPathComponent:@"wq-sqlite-export"];
-    [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    // A new folder per export: never a file left from an earlier export.
+    NSString *dir = [[NSTemporaryDirectory() stringByAppendingPathComponent:@"wq-sqlite-export"]
+                     stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    if (![NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil]) {
+        wq_alert(self, @"Cannot export", WQLocalized(@"cannot create the CSV file"));
+        return;
+    }
+    if (!_exportDirs) _exportDirs = [NSMutableArray new];
+    [_exportDirs addObject:dir];
     NSString *out = [dir stringByAppendingPathComponent:name];
+    _exporting = YES;
     sender.enabled = NO;
+    __weak typeof(self) weakSelf = self;
     dispatch_async(snapshot.queue, ^{
         NSString *error = nil;
-        [NSFileManager.defaultManager createFileAtPath:out contents:nil attributes:nil];
-        NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:out];
-        sqlite3_stmt *stmt = NULL;
-        if (!file) error = WQLocalized(@"cannot create the CSV file");
-        else if (sqlite3_prepare_v2(snapshot.db, sql.UTF8String, -1, &stmt, NULL) != SQLITE_OK) error = @(sqlite3_errmsg(snapshot.db));
-        else if (!sqlite3_stmt_readonly(stmt)) error = WQLocalized(@"Only read-only statements can run here.");
-        else {
-            int count = sqlite3_column_count(stmt);
-            NSMutableArray *header = [NSMutableArray new];
-            for (int i = 0; i < count; i++) [header addObject:@(sqlite3_column_name(stmt, i) ?: "?")];
-            [file writeData:[[[header componentsJoinedByString:@","] stringByAppendingString:@"\r\n"] dataUsingEncoding:NSUTF8StringEncoding]];
-            while (sqlite3_step(stmt) == SQLITE_ROW) {
-                @autoreleasepool {
-                    NSMutableArray *fields = [NSMutableArray arrayWithCapacity:(NSUInteger)count];
-                    for (int i = 0; i < count; i++) [fields addObject:wq_sqlite_csv_field(stmt, i)];
-                    [file writeData:[[[fields componentsJoinedByString:@","] stringByAppendingString:@"\r\n"] dataUsingEncoding:NSUTF8StringEncoding]];
-                }
-            }
-        }
-        sqlite3_finalize(stmt);
-        [file closeFile];
+        // Leaving the screen stops the export.
+        BOOL ok = wq_sqlite_export_csv(snapshot.db, sql, out, ^BOOL { return weakSelf == nil; }, &error);
         dispatch_async(dispatch_get_main_queue(), ^{
+            typeof(self) strongSelf = weakSelf;
+            if (!ok) [NSFileManager.defaultManager removeItemAtPath:dir error:nil];
+            if (!strongSelf) return;
+            strongSelf->_exporting = NO;
             sender.enabled = YES;
-            if (error) { wq_alert(self, @"Cannot export", error); return; }
-            wq_share(self, out, nil);
+            if (!ok) { wq_alert(strongSelf, @"Cannot export", error ?: @"?"); return; }
+            wq_share(strongSelf, out, nil);
         });
     });
 }
@@ -910,6 +886,7 @@ static int wq_sqlite_edit_authorizer(void *__unused context, int action, const c
     NSString *_error;
     BOOL _loading, _saving;
     NSUInteger _shownGeneration;
+    WQScanCancellation *_counting;      // the running row count, if any
 }
 
 - (instancetype)initWithPath:(NSString *)path
@@ -1106,10 +1083,16 @@ static int wq_sqlite_edit_authorizer(void *__unused context, int action, const c
 {
     WQSQLiteSnapshot *snapshot = _snapshot;
     NSArray *tables = _tables;
+    NSUInteger generation = _shownGeneration;
+    // Counts belong to one listing: a newer listing (after a change) stops
+    // this one, and late results of an older one are dropped.
+    [_counting cancel];
+    WQScanCancellation *counting = [WQScanCancellation new];
+    _counting = counting;
     __weak typeof(self) weakSelf = self;
     dispatch_async(snapshot.queue, ^{
         for (NSDictionary *table in tables) {
-            if (!weakSelf) return;
+            if (!weakSelf || counting.isCancelled) return;
             if (![table[@"type"] isEqualToString:@"table"]) continue;
             NSString *sql = [@"SELECT count(*) FROM " stringByAppendingString:wq_sqlite_quote_identifier(table[@"name"])];
             sqlite3_stmt *stmt = NULL;
@@ -1120,7 +1103,8 @@ static int wq_sqlite_edit_authorizer(void *__unused context, int action, const c
             NSString *name = table[@"name"];
             dispatch_async(dispatch_get_main_queue(), ^{
                 WQSQLiteViewController *strongSelf = weakSelf;
-                if (!strongSelf || count < 0 || snapshot != strongSelf->_snapshot) return;
+                if (!strongSelf || count < 0 || counting.isCancelled || snapshot != strongSelf->_snapshot ||
+                    generation != strongSelf->_shownGeneration || generation != snapshot.generation) return;
                 strongSelf->_counts[name] = @(count);
                 [strongSelf.tableView reloadData];
             });

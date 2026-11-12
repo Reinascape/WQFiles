@@ -87,6 +87,7 @@ compile_run WQArchiveTests WQArchive.m WQLocalization.m tests/WQArchiveTests.m -
 compile_run WQSyntaxTests WQSyntax.m tests/WQSyntaxTests.m
 compile_run WQMediaStreamTests WQMediaStream.m tests/WQMediaStreamTests.m -framework AVFoundation -framework UniformTypeIdentifiers
 compile_run WQSQLiteSaveTests WQLocalization.m WQCore.m tests/WQSQLiteSaveTests.m -lsqlite3
+compile_run WQSQLiteSupportTests WQLocalization.m tests/WQSQLiteSupportTests.m -lsqlite3
 compile_run WQTrashTests WQLocalization.m WQCore.m tests/WQTrashTests.m
 compile_run WQLaunchServicesTests -DWQ_LS_TESTING WQLaunchServices.m WQLocalization.m tests/WQLaunchServicesTests.m
 
