@@ -1004,7 +1004,7 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     // Zero-width spaces after each slash let lines break between components.
     NSString *breakable = [_path stringByReplacingOccurrencesOfString:@"/" withString:@"/\u200B"];
     _pathLabel.text = _scanStatus ? [NSString stringWithFormat:@"%@\n%@", breakable, _scanStatus] : breakable;
-    CGFloat side = 16, top = 42;
+    CGFloat side = 16, top = kWQDeviceStripHeight + 8;
     CGSize fit = [_pathLabel sizeThatFits:CGSizeMake(width - 2 * side, CGFLOAT_MAX)];
     CGFloat height = top + ceil(fit.height) + 10;
     CGFloat oldHeight = _headerBox.frame.size.height;
