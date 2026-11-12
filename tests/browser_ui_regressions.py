@@ -54,6 +54,13 @@ require(cache, "self.refreshControl = [UIRefreshControl new];", "cache refresh c
 require(cache, "_lastScanFinished > 0", "cache rescans stale data on appearance")
 require(cache, "_cleanCancellation", "cache clean cancellation")
 require(cache, "action:@selector(stopClean)", "cache clean stop button")
+cache_buttons = cache.split("- (void)updateButtons", 1)[1].split("    if (_scanning) {", 1)[0]
+require(cache_buttons, "if (_cleaning)", "cache Stop button checked before the scanning state")
+cache_refresh = cache.split("- (void)userRefresh", 1)[1].split("- (void)scan\n", 1)[0]
+require(cache_refresh, "_refreshAfterClean = YES;", "pull to refresh is queued while cleaning")
+cache_scan = cache.split("- (void)scan\n", 1)[1].split("[_scanCancellation cancel];", 1)[0]
+require(cache_scan, "if (_cleaning)", "no cache scan starts while cleaning")
+require(cache, "[self rescanAfterClean:YES];", "one serialized refresh after cleaning")
 require(cache, "Close running apps first.", "cache clean warning")
 require(sharing, "__weak UIViewController *weakHost", "weak sharing host")
 require(sharing, "preparation.cancelled", "abandoned folder preparation")

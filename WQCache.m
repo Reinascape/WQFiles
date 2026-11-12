@@ -375,6 +375,9 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
     NSString *_status;   // scan / clean progress, nil when idle
     NSString *_result;   // last clean result
     BOOL _scanning, _cleaning, _scanLimited, _cleanRequiresRescan;
+    // A refresh asked for while cleaning runs once the cleaning has ended:
+    // a scan must not replace the list (or the Stop button) under it.
+    BOOL _refreshAfterClean, _rescanAfterClean;
     WQScanCancellation *_scanCancellation;
     WQScanCancellation *_cleanCancellation;
     NSUInteger _scanGeneration;
@@ -466,14 +469,15 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
 
 - (void)updateButtons
 {
-    if (_scanning) {
-        self.navigationItem.rightBarButtonItems = nil;
-        return;
-    }
+    // Stop stays while cleaning, whatever else happens.
     if (_cleaning) {
         UIBarButtonItem *stop = [[UIBarButtonItem alloc] initWithTitle:WQLocalizedNullable(@"Stop") style:UIBarButtonItemStylePlain
                                                                  target:self action:@selector(stopClean)];
         self.navigationItem.rightBarButtonItems = @[stop];
+        return;
+    }
+    if (_scanning) {
+        self.navigationItem.rightBarButtonItems = nil;
         return;
     }
     NSUInteger n = 0;
@@ -504,13 +508,40 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
 // and look for the app name database again if it wasn't found before.
 - (void)userRefresh
 {
+    if (_cleaning) {
+        _refreshAfterClean = YES;
+        [self.refreshControl endRefreshing];
+        return;
+    }
     wq_enumerate_invalidate();
     wq_display_names_reset_miss();
     [self scan];
 }
 
+// The one refresh after cleaning: the pull to refresh that came in during
+// it, a rescan asked for meanwhile, or the rescan the result needs. YES when
+// a scan was started.
+- (BOOL)rescanAfterClean:(BOOL)needed
+{
+    BOOL user = _refreshAfterClean, queued = _rescanAfterClean;
+    _refreshAfterClean = NO;
+    _rescanAfterClean = NO;
+    if (!needed && !user && !queued) return NO;
+    if (user) {
+        wq_enumerate_invalidate();
+        wq_display_names_reset_miss();
+    }
+    [self scan];
+    return YES;
+}
+
 - (void)scan
 {
+    if (_cleaning) {
+        _rescanAfterClean = YES;
+        [self.refreshControl endRefreshing];
+        return;
+    }
     [_scanCancellation cancel];
     WQScanCancellation *cancellation = [WQScanCancellation new];
     _scanCancellation = cancellation;
@@ -886,6 +917,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
 
 - (void)clean
 {
+    if (_scanning || _cleaning) return;
     NSArray<WQCacheItem *> *selected = [_items filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"selected == YES"]];
     WQScanCancellation *cancellation = [WQScanCancellation new];
     _cleanCancellation = cancellation;
@@ -913,7 +945,9 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
                 self->_scanLimited = YES;
                 self->_cleanRequiresRescan = YES;
                 self->_status = nil;
+                BOOL rescanned = [self rescanAfterClean:NO];
                 self->_result = WQLocalizedFormat(@"Clean cancelled: %@. Scan again before retrying.", validationFailure);
+                if (rescanned) return;
                 [self.tableView reloadData];
                 [self updateButtons];
             });
@@ -948,7 +982,7 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
             self->_cleanCancellation = nil;
             if (cancelled) {
                 self->_status = nil;
-                [self scan];
+                [self rescanAfterClean:YES];
                 self->_result = WQLocalizedFormat(@"Stopped. Freed %@.%@", wq_size_text(freed),
                                  allOk ? @"" : WQLocalized(@" Some items could not be removed (see Log)."));
                 return;
@@ -957,12 +991,14 @@ static BOOL WQCacheValidateItem(WQCacheItem *item, NSString **reason)
                 self->_scanLimited = YES;
                 self->_cleanRequiresRescan = YES;
                 self->_status = nil;
+                BOOL rescanned = [self rescanAfterClean:NO];
                 self->_result = WQLocalizedFormat(@"Clean stopped: %@. Scan again before retrying.", validationFailure);
+                if (rescanned) return;
                 [self.tableView reloadData];
                 [self updateButtons];
             } else {
                 self->_status = nil;
-                [self scan];
+                [self rescanAfterClean:YES];
                 self->_result = WQLocalizedFormat(@"Freed %@.%@", wq_size_text(freed),
                                  allOk ? @"" : WQLocalized(@" Some items could not be removed (see Log)."));
             }
