@@ -38,6 +38,26 @@ static void wq_remove_export(NSString *exportDir)
     if (exportDir.length) [NSFileManager.defaultManager removeItemAtPath:exportDir error:nil];
 }
 
+void wq_share_sweep_stale_exports(void)
+{
+    dispatch_async(wq_io(), ^{
+        NSFileManager *fm = NSFileManager.defaultManager;
+        NSString *tmp = NSTemporaryDirectory();
+        NSDate *cutoff = [NSDate dateWithTimeIntervalSinceNow:-3600];
+        NSUInteger removed = 0;
+        for (NSString *name in [fm contentsOfDirectoryAtPath:tmp error:nil]) {
+            if (![name hasPrefix:@"WQShare-"]) continue;
+            NSString *dir = [tmp stringByAppendingPathComponent:name];
+            NSDictionary *attrs = [fm attributesOfItemAtPath:dir error:nil];   // lstat: a link is never followed
+            if (![attrs.fileType isEqualToString:NSFileTypeDirectory]) continue;
+            NSDate *modified = attrs.fileModificationDate;
+            if (modified && [modified compare:cutoff] == NSOrderedDescending) continue;   // may still be in use
+            if ([fm removeItemAtPath:dir error:nil]) removed++;
+        }
+        if (removed) wq_log(@"share: removed %lu stale export folder(s)", (unsigned long)removed);
+    });
+}
+
 static BOOL wq_share_host_is_active(UIViewController *host)
 {
     if (!host || !host.isViewLoaded || !host.view.window) return NO;
