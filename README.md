@@ -125,8 +125,11 @@ Before a regular file is overwritten or deleted, its contents are copied to
 backup to restore it to its original location. **Recently Deleted** (under
 Backups on the start screen) lists the backed-up files whose original is gone,
 newest first: restore one to where it was (missing folders are created), or
-delete it from Backups for good. In the file browser only empty
-folders can be deleted; symbolic links are removed as links. Clearing an app's
+delete it from Backups for good. Deleting a folder deletes everything in it
+after saying how many files that is; every file is copied to Backups first
+(one backup for the whole folder), so it can be restored from Recently
+Deleted. App and system containers themselves (and the folders above them)
+can't be deleted. Symbolic links are removed as links. Clearing an app's
 data and cleaning caches delete without a file-by-file backup; Apps offers to
 back up Documents and Library first, while `tmp` is discarded and cannot be
 restored. Close the target app before backup, restore, or clear. App copies are

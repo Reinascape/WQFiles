@@ -863,3 +863,11 @@
 "All" = "全部";
 "Apple" = "Apple";
 "Other" = "其他";
+"Deleting…" = "正在删除…";
+"Cancelled" = "已取消";
+"Files are copied to Backups first." = "文件会先复制到备份。";
+"This folder can't be deleted: it holds an app's or the system's data." = "无法删除此文件夹：其中包含应用或系统的数据。";
+"%@\n\nThis folder holds an app's or the system's data and can't be deleted here." = "%@\n\n此文件夹包含应用或系统的数据，无法在此删除。";
+"%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "共 %lu 个文件（%@），包括文件夹中的所有内容。每个文件都会先复制到备份，可在“最近删除”中恢复。";
+"%lu of %lu files" = "%lu / %lu 个文件";
+"%lu files were deleted (copies are in Backups), then:\n%@" = "已删除 %lu 个文件（副本在备份中），随后：\n%@";

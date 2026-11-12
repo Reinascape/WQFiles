@@ -863,3 +863,11 @@
 "All" = "Все";
 "Apple" = "Apple";
 "Other" = "Другие";
+"Deleting…" = "Удаление…";
+"Cancelled" = "Отменено";
+"Files are copied to Backups first." = "Файлы сначала копируются в резервные копии.";
+"This folder can't be deleted: it holds an app's or the system's data." = "Эту папку нельзя удалить: в ней данные приложения или системы.";
+"%@\n\nThis folder holds an app's or the system's data and can't be deleted here." = "%@\n\nВ этой папке данные приложения или системы, её нельзя удалить здесь.";
+"%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "Всего файлов: %lu (%@), включая всё содержимое папок. Каждый файл сначала копируется в резервные копии, его можно восстановить в «Недавно удалённых».";
+"%lu of %lu files" = "%lu из %lu файлов";
+"%lu files were deleted (copies are in Backups), then:\n%@" = "Удалено файлов: %lu (копии в резервных копиях), затем:\n%@";

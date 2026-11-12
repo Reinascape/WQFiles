@@ -432,16 +432,9 @@ static BOOL wq_stream(int in, int out, NSString **errorText)
 
 // Always durable, including own files. Safety artifacts themselves are protected
 // from generic overwrite/delete: recursively backing up Backups is unbounded.
-static BOOL wq_backup_fd(NSString *path, int fd, NSString **backupPath, NSString **errorText)
+// A new backup unit name: "20261111-175959-512-1".
+static NSString *wq_new_backup_stamp(void)
 {
-    if (errorText) *errorText = nil;
-    NSString *original = WQCanonicalVarPath(path);
-    NSString *root = WQCanonicalVarPath(wq_backup_root());
-    if (!WQAbsolutePathGrammar(original) || wq_is_backup_storage_path(original)) {
-        wq_log(@"backup: refusing invalid path or mutation of backup storage: %@", path);
-        if (errorText) *errorText = WQLocalized(@"The path is invalid or belongs to backup storage.");
-        return NO;
-    }
     static NSDateFormatter *fmt;
     static uint64_t counter;
     static NSLock *lock;
@@ -457,6 +450,22 @@ static BOOL wq_backup_fd(NSString *path, int fd, NSString **backupPath, NSString
     NSString *stamp = counter == UINT64_MAX ? nil :
         [NSString stringWithFormat:@"%@-%llu", [fmt stringFromDate:NSDate.date], (unsigned long long)++counter];
     [lock unlock];
+    return stamp;
+}
+
+// Backs up the open file into Backups/<stamp>/<original path>. `unitStamp`
+// puts several files into one unit (a deleted folder); nil makes a new one.
+static BOOL wq_backup_fd(NSString *path, int fd, NSString *unitStamp, NSString **backupPath, NSString **errorText)
+{
+    if (errorText) *errorText = nil;
+    NSString *original = WQCanonicalVarPath(path);
+    NSString *root = WQCanonicalVarPath(wq_backup_root());
+    if (!WQAbsolutePathGrammar(original) || wq_is_backup_storage_path(original)) {
+        wq_log(@"backup: refusing invalid path or mutation of backup storage: %@", path);
+        if (errorText) *errorText = WQLocalized(@"The path is invalid or belongs to backup storage.");
+        return NO;
+    }
+    NSString *stamp = unitStamp ?: wq_new_backup_stamp();
     if (!stamp) {
         if (errorText) *errorText = WQLocalized(@"Cannot allocate a backup name.");
         return NO;
@@ -622,16 +631,21 @@ static BOOL wq_mutation_open(NSString *path, NSDictionary *expected, WQMutation 
     return YES;
 }
 
-static BOOL wq_mutation_backup(NSString *path, WQMutation *mutation, NSString **backup, NSString **errorText)
+static BOOL wq_mutation_backup_into(NSString *path, WQMutation *mutation, NSString *unitStamp, NSString **backup, NSString **errorText)
 {
     if (!wq_mutation_current(path, mutation, YES, errorText)) return NO;
     NSString *backupError = nil;
-    if (!wq_backup_fd(path, mutation->fd, backup, &backupError)) {
+    if (!wq_backup_fd(path, mutation->fd, unitStamp, backup, &backupError)) {
         if (errorText) *errorText = WQLocalizedFormat(@"Backup of the current file failed, nothing was written: %@", backupError ?: WQLocalized(@"unknown error"));
         return NO;
     }
     WQ_MUTATION_HOOK(@"backedUp", path);
     return wq_mutation_current(path, mutation, YES, errorText);
+}
+
+static BOOL wq_mutation_backup(NSString *path, WQMutation *mutation, NSString **backup, NSString **errorText)
+{
+    return wq_mutation_backup_into(path, mutation, nil, backup, errorText);
 }
 
 static BOOL wq_restore_backup_fd(WQMutation *mutation, NSString *backup, NSString **errorText)
@@ -1206,6 +1220,131 @@ BOOL wq_create_dir(NSString *path, NSString **errorText)
     return rc == 0;
 }
 
+// Backs a regular file up (into `unitStamp`, or a new unit) and removes it.
+static BOOL wq_delete_regular(NSString *path, const struct stat *st, NSString *unitStamp, NSString **errorText)
+{
+    WQMutation mutation;
+    if (!wq_mutation_open(path, wq_version_for_stat(st), &mutation, O_RDONLY, errorText)) return NO;
+    NSString *backup = nil;
+    if (!wq_mutation_backup_into(path, &mutation, unitStamp, &backup, errorText)) { wq_mutation_close(&mutation); return NO; }
+    int rc = unlinkat(mutation.parent, path.lastPathComponent.fileSystemRepresentation, 0);
+    int err = errno;
+    wq_mutation_close(&mutation);
+    if (rc != 0 && errorText) *errorText = wq_errno(err);
+    return rc == 0;
+}
+
+// Container roots and everything above them: deleting one would remove a
+// whole app's (or the system's) data, so folder deletes refuse them.
+BOOL wq_is_protected_folder(NSString *path)
+{
+    NSString *p = WQCanonicalVarPath(path);
+    NSArray<NSString *> *parents = @[
+        @"/private/var/mobile/Containers/Data/Application", @"/private/var/mobile/Containers/Data/PluginKitPlugin",
+        @"/private/var/mobile/Containers/Data/InternalDaemon", @"/private/var/mobile/Containers/Shared/AppGroup",
+        @"/private/var/containers/Data/System", @"/private/var/containers/Shared/SystemGroup",
+        @"/private/var/containers/Bundle/Application",
+    ];
+    for (NSString *parent in parents) {
+        if ([parent hasPrefix:[p stringByAppendingString:@"/"]] || [p isEqualToString:parent]) return YES;   // the parent or above
+        if ([p.stringByDeletingLastPathComponent isEqualToString:parent]) return YES;                       // a container root
+    }
+    // Shallow system paths (/, /private, /private/var, /private/var/mobile…).
+    return p.pathComponents.count <= 5;
+}
+
+typedef struct {
+    NSString *stamp;
+    BOOL (^cancelled)(void);
+    void (^progress)(NSUInteger deleted);
+    NSUInteger deleted;
+    NSString *error;
+} WQTreeDelete;
+
+static BOOL wq_delete_tree_entry(NSString *path, WQTreeDelete *ctx, NSUInteger depth)
+{
+    if (ctx->cancelled && ctx->cancelled()) { ctx->error = WQLocalized(@"Cancelled"); return NO; }
+    if (depth > 128) { ctx->error = WQLocalized(@"Folders are nested too deeply"); return NO; }
+    struct stat st;
+    if (!wq_stat(path, &st)) {
+        if (errno == ENOENT) return YES;   // gone meanwhile
+        ctx->error = [NSString stringWithFormat:@"%@: %@", path.lastPathComponent, wq_errno(errno)];
+        return NO;
+    }
+    if (S_ISDIR(st.st_mode)) {
+        NSString *listError = nil;
+        NSArray<NSString *> *children = wq_list(path, &listError);
+        if (!children) { ctx->error = [NSString stringWithFormat:@"%@: %@", path.lastPathComponent, listError ?: @"can't list"]; return NO; }
+        for (NSString *child in children)
+            if (!wq_delete_tree_entry([path stringByAppendingPathComponent:child], ctx, depth + 1)) return NO;
+        NSString *parentPath = path.stringByDeletingLastPathComponent;
+        int parent = wq_open_directory_flags(parentPath, O_SEARCH);
+        int rc = parent >= 0 ? unlinkat(parent, path.lastPathComponent.fileSystemRepresentation, AT_REMOVEDIR) : -1;
+        int err = errno;
+        if (parent >= 0) close(parent);
+        if (rc != 0) { ctx->error = [NSString stringWithFormat:@"%@: %@", path.lastPathComponent, wq_errno(err)]; return NO; }
+        return YES;
+    }
+    NSString *error = nil;
+    BOOL ok;
+    if (S_ISREG(st.st_mode)) {
+        ok = wq_delete_regular(path, &st, ctx->stamp, &error);
+    } else {
+        // Links, sockets, pipes: removed as they are; there is nothing to back up.
+        NSString *parentPath = path.stringByDeletingLastPathComponent;
+        int parent = wq_open_directory_flags(parentPath, O_SEARCH);
+        ok = parent >= 0 && unlinkat(parent, path.lastPathComponent.fileSystemRepresentation, 0) == 0;
+        if (!ok) error = wq_errno(errno);
+        if (parent >= 0) close(parent);
+    }
+    if (!ok) { ctx->error = [NSString stringWithFormat:@"%@: %@", path.lastPathComponent, error ?: @"failed"]; return NO; }
+    ctx->deleted++;
+    if (ctx->progress) ctx->progress(ctx->deleted);
+    return YES;
+}
+
+BOOL wq_delete_tree(NSString *path, BOOL (^cancelled)(void), void (^progress)(NSUInteger deleted),
+                    NSUInteger *deleted, NSString **backupUnit, NSString **errorText)
+{
+    if (deleted) *deleted = 0;
+    if (wq_is_backup_storage_path(path)) {
+        if (errorText) *errorText = WQLocalized(@"Backup storage cannot be overwritten or deleted through the file browser.");
+        return NO;
+    }
+    if (!WQAbsolutePathGrammar(WQCanonicalVarPath(path)) || wq_is_protected_folder(path)) {
+        if (errorText) *errorText = WQLocalized(@"This folder can't be deleted: it holds an app's or the system's data.");
+        return NO;
+    }
+    WQTreeDelete ctx = { .stamp = wq_new_backup_stamp(), .cancelled = cancelled, .progress = progress };
+    if (!ctx.stamp) { if (errorText) *errorText = WQLocalized(@"Cannot allocate a backup name."); return NO; }
+    BOOL ok = wq_delete_tree_entry(path, &ctx, 0);
+    if (deleted) *deleted = ctx.deleted;
+    NSString *unit = [wq_backup_root() stringByAppendingPathComponent:ctx.stamp];
+    struct stat ust;
+    if (backupUnit) *backupUnit = lstat(unit.fileSystemRepresentation, &ust) == 0 ? unit : nil;
+    wq_log(@"delete folder: %@ -> %@, %lu files backed up and removed (unit %@)", path, ok ? @"OK" : ctx.error,
+           (unsigned long)ctx.deleted, ctx.stamp);
+    if (!ok && errorText) *errorText = ctx.error;
+    return ok;
+}
+
+void wq_tree_count(NSString *path, NSUInteger limit, NSUInteger *files, unsigned long long *bytes)
+{
+    NSMutableArray<NSString *> *pending = [NSMutableArray arrayWithObject:path];
+    *files = 0; *bytes = 0;
+    while (pending.count && *files < limit) {
+        NSString *dir = pending.lastObject;
+        [pending removeLastObject];
+        for (NSString *child in wq_list(dir, NULL) ?: @[]) {
+            NSString *p = [dir stringByAppendingPathComponent:child];
+            struct stat st;
+            if (!wq_stat(p, &st)) continue;
+            if (S_ISDIR(st.st_mode)) [pending addObject:p];
+            else { (*files)++; if (S_ISREG(st.st_mode)) *bytes += (unsigned long long)st.st_size; }
+        }
+    }
+}
+
 BOOL wq_delete(NSString *path, NSString **errorText)
 {
     if (wq_is_backup_storage_path(path)) {
@@ -1230,16 +1369,9 @@ BOOL wq_delete(NSString *path, NSString **errorText)
     }
     if (S_ISREG(st.st_mode)) {
         close(parent);
-        WQMutation mutation;
-        if (!wq_mutation_open(path, wq_version_for_stat(&st), &mutation, O_RDONLY, errorText)) return NO;
-        NSString *backup = nil;
-        if (!wq_mutation_backup(path, &mutation, &backup, errorText)) { wq_mutation_close(&mutation); return NO; }
-        int rc = unlinkat(mutation.parent, name, 0);
-        int err = errno;
-        wq_mutation_close(&mutation);
-        if (rc != 0 && errorText) *errorText = wq_errno(err);
-        wq_log(@"delete: %@ -> %@", path, rc == 0 ? @"OK" : wq_errno(err));
-        return rc == 0;
+        BOOL ok = wq_delete_regular(path, &st, nil, errorText);
+        wq_log(@"delete: %@ -> %@", path, ok ? @"OK" : (errorText && *errorText ? *errorText : @"failed"));
+        return ok;
     }
     int flags = S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0;
     int rc = unlinkat(parent, name, flags);

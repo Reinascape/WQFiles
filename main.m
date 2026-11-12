@@ -1392,9 +1392,15 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     if (wq_refuse_if_deleting_off(self)) return;
     NSArray<NSString *> *paths = [self selectedFilePaths];
     if (!paths.count) return;
+    BOOL folders = NO;
+    for (NSString *path in paths) {
+        struct stat st;
+        if (lstat(path.fileSystemRepresentation, &st) == 0 ? S_ISDIR(st.st_mode) : wq_stat(path, &st) && S_ISDIR(st.st_mode)) folders = YES;
+    }
+    if (folders) { [self exitFileSelection]; [self confirmDeleteFolders:paths]; return; }
     NSString *title = paths.count == 1 ? WQLocalizedFormat(@"Delete “%@”?", paths.firstObject.lastPathComponent)
                                        : WQLocalizedFormat(@"Delete %lu items?", (unsigned long)paths.count);
-    UIAlertController *alert = wq_alert_controller(title, @"Files are copied to Backups first. Folders are deleted only when they are empty.", UIAlertControllerStyleAlert);
+    UIAlertController *alert = wq_alert_controller(title, @"Files are copied to Backups first.", UIAlertControllerStyleAlert);
     [alert addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
     [alert addAction:wq_alert_action(@"Delete", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
         [self exitFileSelection];
@@ -2139,6 +2145,80 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+// Folders and everything in them (and any files among `paths`): counted
+// first, so the alert says how much goes; each file is copied to Backups.
+- (void)confirmDeleteFolders:(NSArray<NSString *> *)paths
+{
+    if (wq_refuse_if_deleting_off(self)) return;
+    for (NSString *path in paths) {
+        if (wq_is_protected_folder(path)) {
+            wq_alert(self, @"Cannot delete", WQLocalizedFormat(@"%@\n\nThis folder holds an app's or the system's data and can't be deleted here.", path));
+            return;
+        }
+    }
+    dispatch_async(wq_io(), ^{
+        NSUInteger files = 0, total = 0;
+        unsigned long long bytes = 0, totalBytes = 0;
+        for (NSString *path in paths) {
+            struct stat st;
+            if (wq_stat(path, &st) && !S_ISDIR(st.st_mode)) { total++; totalBytes += S_ISREG(st.st_mode) ? (unsigned long long)st.st_size : 0; continue; }
+            wq_tree_count(path, 1000000, &files, &bytes);
+            total += files; totalBytes += bytes;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSString *title = paths.count == 1 ? WQLocalizedFormat(@"Delete “%@”?", paths.firstObject.lastPathComponent)
+                                               : WQLocalizedFormat(@"Delete %lu items?", (unsigned long)paths.count);
+            NSString *message = WQLocalizedFormat(@"%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted.",
+                                                  (unsigned long)total, wq_size_text(totalBytes));
+            UIAlertController *alert = wq_alert_controller(title, message, UIAlertControllerStyleAlert);
+            [alert addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
+            [alert addAction:wq_alert_action(@"Delete", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
+                [self deleteTrees:paths total:total];
+            })];
+            [self presentViewController:alert animated:YES completion:nil];
+        });
+    });
+}
+
+- (void)deleteTrees:(NSArray<NSString *> *)paths total:(NSUInteger)total
+{
+    WQScanCancellation *cancellation = [WQScanCancellation new];
+    UIAlertController *hud = wq_alert_controller(@"Deleting…", @"Starting…", UIAlertControllerStyleAlert);
+    [hud addAction:wq_alert_action(@"Stop", UIAlertActionStyleCancel, ^(UIAlertAction *__unused a) { [cancellation cancel]; })];
+    [self presentViewController:hud animated:YES completion:nil];
+    dispatch_async(wq_io(), ^{
+        __block CFAbsoluteTime lastUpdate = 0;
+        __block NSUInteger done = 0;
+        NSString *error = nil;
+        BOOL ok = YES;
+        for (NSString *path in paths) {
+            NSUInteger before = done, deleted = 0;
+            NSString *e = nil;
+            ok = wq_delete_tree(path, ^BOOL { return cancellation.isCancelled; }, ^(NSUInteger n) {
+                NSUInteger now = before + n;
+                CFAbsoluteTime t = CFAbsoluteTimeGetCurrent();
+                if (t - lastUpdate < 0.2) return;
+                lastUpdate = t;
+                NSString *text = WQLocalizedFormat(@"%lu of %lu files", (unsigned long)now, (unsigned long)total);
+                dispatch_async(dispatch_get_main_queue(), ^{ hud.message = text; });
+            }, &deleted, NULL, &e);
+            done += deleted;
+            if (!ok) { error = e; break; }
+        }
+        BOOL stopped = cancellation.isCancelled;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            void (^finish)(void) = ^{
+                if (!ok && !stopped)
+                    wq_alert(self, @"Not everything was deleted",
+                             WQLocalizedFormat(@"%lu files were deleted (copies are in Backups), then:\n%@", (unsigned long)done, error ?: @"unknown error"));
+                [self reload];
+            };
+            if (self.presentedViewController == hud) [self dismissViewControllerAnimated:YES completion:finish];
+            else finish();
+        });
+    });
+}
+
 - (void)confirmDelete:(WQItem *)item
 {
     if (wq_refuse_if_deleting_off(self)) return;
@@ -2146,7 +2226,12 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     if (item.isLink) {
         message = WQLocalizedFormat(@"%@\n\nRemoves the symbolic link only; its target is not changed.", item.path);
     } else if (item.isDir) {
-        message = WQLocalizedFormat(@"%@\n\nOnly empty folders can be deleted.", item.path);
+        if (wq_is_protected_folder(item.path)) {
+            message = WQLocalizedFormat(@"%@\n\nOnly empty folders can be deleted.", item.path);
+        } else {
+            [self confirmDeleteFolders:@[item.path]];
+            return;
+        }
     } else if (item.isRegular) {
         message = WQLocalizedFormat(@"%@\n\nA copy is kept in Backups.", item.path);
     } else {

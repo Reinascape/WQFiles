@@ -859,3 +859,11 @@
 "All" = "الكل";
 "Apple" = "Apple";
 "Other" = "أخرى";
+"Deleting…" = "جارٍ الحذف…";
+"Cancelled" = "أُلغي";
+"Files are copied to Backups first." = "تُنسخ الملفات إلى النسخ الاحتياطية أولاً.";
+"This folder can't be deleted: it holds an app's or the system's data." = "لا يمكن حذف هذا المجلد: فهو يحتوي على بيانات تطبيق أو النظام.";
+"%@\n\nThis folder holds an app's or the system's data and can't be deleted here." = "%@\n\nيحتوي هذا المجلد على بيانات تطبيق أو النظام ولا يمكن حذفه هنا.";
+"%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "%lu ملف (%@) إجمالاً، بما في ذلك كل محتويات المجلدات. يُنسخ كل ملف إلى النسخ الاحتياطية أولاً ويمكن استعادته من المحذوفة مؤخراً.";
+"%lu of %lu files" = "%lu من %lu ملف";
+"%lu files were deleted (copies are in Backups), then:\n%@" = "حُذف %lu ملف (النسخ في النسخ الاحتياطية)، ثم:\n%@";

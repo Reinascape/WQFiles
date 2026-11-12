@@ -5,6 +5,7 @@
 #import "../WQAccess.m"
 #import "../WQTrash.m"
 #include <stdlib.h>
+#include <sys/stat.h>
 SecTaskRef SecTaskCreateFromSelf(CFAllocatorRef allocator) { (void)allocator; return NULL; }
 CFTypeRef SecTaskCopyValueForEntitlement(SecTaskRef task, CFStringRef entitlement, CFErrorRef *error)
 { (void)task; (void)entitlement; (void)error; return NULL; }
@@ -63,6 +64,52 @@ int main(void)
         put(gone, @"new file meanwhile");
         check(!wq_restore_deleted(notes, &error) && has(gone, @"new file meanwhile"), @"restore never replaces an existing file");
         check(wq_recently_deleted().count == 0, @"a path that exists again isn't listed");
+
+        // Folder delete: everything inside goes, one backup unit, restorable.
+        NSString *tree = [data stringByAppendingPathComponent:@"ADManager"];
+        [fm createDirectoryAtPath:[tree stringByAppendingPathComponent:@"a/b/c"] withIntermediateDirectories:YES attributes:nil error:nil];
+        put([tree stringByAppendingPathComponent:@"Backups.plist"], @"plist");
+        put([tree stringByAppendingPathComponent:@"a/one.txt"], @"one");
+        put([tree stringByAppendingPathComponent:@"a/b/c/deep.bin"], @"deep");
+        put([tree stringByAppendingPathComponent:@"a/b/empty.dat"], @"");
+        check(symlink("/etc/hosts", [tree stringByAppendingPathComponent:@"link"].fileSystemRepresentation) == 0, @"link fixture");
+        check(mkfifo([tree stringByAppendingPathComponent:@"a/pipe"].fileSystemRepresentation, 0600) == 0, @"pipe fixture");
+        NSUInteger files = 0; unsigned long long bytes = 0;
+        wq_tree_count(tree, 1000, &files, &bytes);
+        check(files == 6 && bytes == 12, @"count files and bytes");
+        check(!wq_delete(tree, &error), @"plain delete still refuses a non-empty folder");
+        NSUInteger deleted = 0, progressCalls = 0;
+        __block NSUInteger *calls = &progressCalls;
+        NSString *unit = nil;
+        check(wq_delete_tree(tree, nil, ^(NSUInteger n) { (void)n; (*calls)++; }, &deleted, &unit, &error), @"folder delete");
+        check(![fm fileExistsAtPath:tree] && deleted == 6 && progressCalls == 6, @"folder and everything inside removed");
+        NSArray *unitFiles = [[fm subpathsOfDirectoryAtPath:unit error:nil] filteredArrayUsingPredicate:
+                              [NSPredicate predicateWithFormat:@"SELF ENDSWITH '.txt' OR SELF ENDSWITH '.bin' OR SELF ENDSWITH '.plist' OR SELF ENDSWITH '.dat'"]];
+        check(unitFiles.count == 4, @"the four regular files are in one backup unit");
+        NSUInteger fromTree = 0;
+        WQDeletedItem *deep = nil;
+        for (WQDeletedItem *item in wq_recently_deleted())
+            if ([item.originalPath hasPrefix:[tree stringByAppendingString:@"/"]]) {
+                fromTree++;
+                if ([item.originalPath.lastPathComponent isEqualToString:@"deep.bin"]) deep = item;
+            }
+        check(fromTree == 4 && deep.unitFileCount == 4, @"Recently Deleted lists the folder's files");
+        check(wq_restore_deleted(deep, &error) && has([tree stringByAppendingPathComponent:@"a/b/c/deep.bin"], @"deep"),
+              @"a file of the deleted folder restores with its folders");
+        // Cancel stops early; what was deleted is backed up.
+        NSString *many = [data stringByAppendingPathComponent:@"Many"];
+        [fm createDirectoryAtPath:many withIntermediateDirectories:YES attributes:nil error:nil];
+        for (int i = 0; i < 5; i++) put([many stringByAppendingPathComponent:[NSString stringWithFormat:@"x%d", i]], @"x");
+        __block NSUInteger seen = 0;
+        check(!wq_delete_tree(many, ^BOOL { return seen >= 2; }, ^(NSUInteger n) { seen = n; }, &deleted, NULL, &error) &&
+              deleted == 2 && [fm fileExistsAtPath:many], @"cancel stops after the current file");
+        // Protected folders.
+        check(wq_is_protected_folder(@"/private/var/mobile/Containers/Data/Application/4CE791DB-6B04-4A39-8F59-AF32BA61D494"), @"container root protected");
+        check(wq_is_protected_folder(@"/private/var/mobile/Containers/Data/Application"), @"container parent protected");
+        check(wq_is_protected_folder(@"/private/var/mobile"), @"shallow system folder protected");
+        check(!wq_is_protected_folder(@"/private/var/mobile/Containers/Data/Application/4CE791DB-6B04-4A39-8F59-AF32BA61D494/Documents"),
+              @"folders inside a container can be deleted");
+        check(!wq_delete_tree(@"/private/var/mobile/Containers/Shared/AppGroup", nil, nil, NULL, NULL, &error), @"tree delete refuses protected");
 
         check(wq_backup_stamp_date(@"20261111-175959-512-1") != nil && wq_backup_stamp_date(@"notastamp") == nil, @"stamp dates");
         [fm removeItemAtPath:base error:nil];

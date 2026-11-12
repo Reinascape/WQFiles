@@ -863,3 +863,11 @@
 "All" = "Todos";
 "Apple" = "Apple";
 "Other" = "Outros";
+"Deleting…" = "Apagando…";
+"Cancelled" = "Cancelado";
+"Files are copied to Backups first." = "Os arquivos são copiados primeiro para Backups.";
+"This folder can't be deleted: it holds an app's or the system's data." = "Esta pasta não pode ser apagada: ela contém os dados de um app ou do sistema.";
+"%@\n\nThis folder holds an app's or the system's data and can't be deleted here." = "%@\n\nEsta pasta contém os dados de um app ou do sistema e não pode ser apagada aqui.";
+"%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "%lu arquivos (%@) no total, incluindo tudo nas pastas. Cada arquivo é copiado primeiro para Backups e pode ser restaurado em Apagados recentemente.";
+"%lu of %lu files" = "%lu de %lu arquivos";
+"%lu files were deleted (copies are in Backups), then:\n%@" = "%lu arquivos foram apagados (as cópias estão em Backups); depois:\n%@";

@@ -859,3 +859,11 @@
 "All" = "Alle";
 "Apple" = "Apple";
 "Other" = "Andere";
+"Deleting…" = "Wird gelöscht …";
+"Cancelled" = "Abgebrochen";
+"Files are copied to Backups first." = "Dateien werden zuerst in Backups kopiert.";
+"This folder can't be deleted: it holds an app's or the system's data." = "Dieser Ordner kann nicht gelöscht werden: Er enthält die Daten einer App oder des Systems.";
+"%@\n\nThis folder holds an app's or the system's data and can't be deleted here." = "%@\n\nDieser Ordner enthält die Daten einer App oder des Systems und kann hier nicht gelöscht werden.";
+"%lu files (%@) in total, including everything in the folders. Each file is copied to Backups first and can be restored from Recently Deleted." = "Insgesamt %lu Dateien (%@), einschließlich allem in den Ordnern. Jede Datei wird zuerst in Backups kopiert und kann unter „Zuletzt gelöscht“ wiederhergestellt werden.";
+"%lu of %lu files" = "%lu von %lu Dateien";
+"%lu files were deleted (copies are in Backups), then:\n%@" = "%lu Dateien wurden gelöscht (Kopien sind in Backups), dann:\n%@";

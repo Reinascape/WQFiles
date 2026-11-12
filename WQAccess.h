@@ -90,6 +90,17 @@ BOOL wq_create_dir(NSString *path, NSString *_Nullable *_Nullable errorText);
 
 // Deletes a file (backed up first) or an empty folder.
 BOOL wq_delete(NSString *path, NSString *_Nullable *_Nullable errorText);
+// Deletes a file or a whole folder. Every file is backed up first, all into
+// one backup unit (*backupUnit), so Recently Deleted can restore them; links
+// and special files are removed without a backup. Refuses container roots
+// and the folders above them. Stops at the first error (what was deleted
+// stays in Backups). Call off the main thread.
+BOOL wq_delete_tree(NSString *path, BOOL (^_Nullable cancelled)(void), void (^_Nullable progress)(NSUInteger deleted),
+                    NSUInteger *_Nullable deleted, NSString *_Nullable *_Nullable backupUnit, NSString *_Nullable *_Nullable errorText);
+// Whether a folder delete refuses this path (container roots and above).
+BOOL wq_is_protected_folder(NSString *path);
+// Files (not folders) and bytes under path, counting stops at `limit` files.
+void wq_tree_count(NSString *path, NSUInteger limit, NSUInteger *files, unsigned long long *bytes);
 // YES for a folder that represents one backup unit: a stamp directly under
 // the file backup root, or a bundle/date folder directly under the app backup
 // root. Used by the backup browser's multi-selection.
