@@ -754,7 +754,7 @@
 /* 0.9.1: offloaded apps, Import as Backup, Keep Data Before Restore */
 " · offloaded" = " · descarregado";
 "Installed" = "Instalado";
-"Offloaded" = "Descarregado";
+"Offloaded" = "Desinstalado com dados mantidos";
 "Import as Backup…" = "Importar como backup…";
 "Importing a backup of %@…" = "Importando um backup de %@…";
 "The ZIP couldn't be unpacked: %@" = "Não foi possível descompactar o ZIP: %@";

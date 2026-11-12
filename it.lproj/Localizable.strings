@@ -150,7 +150,7 @@
 "Open in Hex Viewer" = "Apri nel visualizzatore hex";
 "String" = "Stringa";
 "Number" = "Numero";
-"Real" = "Real";
+"Real" = "Numero reale";
 "Boolean" = "Booleano";
 "Date" = "Data";
 "Data" = "Dati";

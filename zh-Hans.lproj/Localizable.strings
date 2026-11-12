@@ -1,5 +1,5 @@
 /* Simplified Chinese localization. English source text is the key. */
-"Restore to Original Location" = "还原原位";
+"Restore to Original Location" = "还原到原始位置";
 "Restore Backup (%@)" = "还原备份（%@）";
 "Restore a Backup… (%lu)" = "还原备份…（%lu）";
 "Restore which backup?" = "选择备份";

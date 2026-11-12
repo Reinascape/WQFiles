@@ -7,7 +7,7 @@
 "Restored" = "Wiederhergestellt";
 "Not restored" = "Nicht wiederhergestellt";
 "Restore failed" = "Wiederherstellen fehlgeschlagen";
-"Restore recovery" = "Recovery der Wiederherstellung";
+"Restore recovery" = "Wiederherstellung nach einem Abbruch";
 "WQ Files" = "WQ Files";
 "Containers" = "Container";
 "Tools" = "Tools";
@@ -150,7 +150,7 @@
 "Open in Hex Viewer" = "Im Hex-Viewer öffnen";
 "String" = "String";
 "Number" = "Zahl";
-"Real" = "Real";
+"Real" = "Gleitkommazahl";
 "Boolean" = "Boolean";
 "Date" = "Datum";
 "Data" = "Daten";
@@ -172,7 +172,7 @@
 "Your edits to this property list have not been saved." = "Deine Änderungen an dieser Property List wurden nicht gesichert.";
 "Read-only format" = "Schreibgeschütztes Format";
 "This property list uses an OpenStep/unknown format that cannot be saved by the editor. Use Open as XML Text and choose a supported format explicitly." = "Diese Property List verwendet ein OpenStep- oder unbekanntes Format, das der Editor nicht sichern kann. Verwende „Als XML-Text öffnen“ und wähle ausdrücklich ein unterstütztes Format.";
-"Cannot save safely" = "Sicheres Sichern nicht möglich";
+"Cannot save safely" = "Sicheres Speichern nicht möglich";
 "The current file version is unavailable. Reopen the file before saving again." = "Die aktuelle Dateiversion ist nicht verfügbar. Öffne die Datei erneut, bevor du wieder sicherst.";
 "%@ is overwritten in place (%@ format). The current version is backed up first." = "%@ wird direkt überschrieben (Format %@). Die aktuelle Version wird zuerst gesichert.";
 "The edited property list contains an unsupported value." = "Die bearbeitete Property List enthält einen nicht unterstützten Wert.";
