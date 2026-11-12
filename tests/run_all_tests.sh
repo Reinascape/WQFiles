@@ -78,6 +78,7 @@ compile_run WQAccessMutationTests WQLocalization.m tests/WQAccessMutationTests.m
 compile_run WQAccessTreeTests WQLocalization.m tests/WQAccessTreeTests.m WQCore.m
 compile_run WQAccessMeasureTests WQLocalization.m tests/WQAccessMeasureTests.m WQCore.m
 compile_run WQAccessCopyTests WQLocalization.m tests/WQAccessCopyTests.m WQCore.m
+compile_run WQAccessScanTests WQLocalization.m tests/WQAccessScanTests.m WQCore.m
 compile_run WQAppsCopyTests WQLocalization.m tests/WQAppsCopyTests.m WQCore.m
 compile_run WQAppsSupportTests tests/WQAppsSupportTests.m
 compile_run WQCacheSafetyTests tests/WQCacheSafetyTests.m

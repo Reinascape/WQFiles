@@ -361,6 +361,7 @@ static int64_t wq_test_volume_limit = -1;
 static void (^wq_test_mutation_hook)(NSString *stage, NSString *path);
 static void (^wq_test_tree_hook)(NSString *stage, NSString *path);
 static void (^wq_test_stream_hook)(NSString *stage, NSString *path);
+static NSDictionary<NSString *, NSArray<NSString *> *> *(^wq_test_shared_scan_runner)(BOOL inodeOnly);
 #define WQ_TREE_HOOK(stage, path) do { if (wq_test_tree_hook) wq_test_tree_hook(stage, path); } while (0)
 #define WQ_MUTATION_HOOK(stage, path) do { if (wq_test_mutation_hook) wq_test_mutation_hook(stage, path); } while (0)
 #define WQ_STREAM_HOOK(stage, path) do { if (wq_test_stream_hook) wq_test_stream_hook(stage, path); } while (0)
@@ -1934,9 +1935,39 @@ BOOL wq_full_scan_was_declined(void)
     return atomic_load(&gFullScanDeclined);
 }
 
+// Full scans run one at a time (the App Data and Internal Daemons slots can
+// both need one): the stop token, the progress window, its completion and the
+// background task belong to a single scan. A second full scan waits here until
+// the first has ended, and only then asks.
+static dispatch_semaphore_t wq_full_scan_gate(void)
+{
+    static dispatch_semaphore_t gate;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ gate = dispatch_semaphore_create(1); });
+    return gate;
+}
+
+// NO when the caller was cancelled while waiting.
+static BOOL wq_full_scan_acquire(NSString *what, WQScanCancellation *caller)
+{
+    dispatch_semaphore_t gate = wq_full_scan_gate();
+    if (dispatch_semaphore_wait(gate, DISPATCH_TIME_NOW) == 0) return YES;
+    wq_log(@"scan: full scan of %@ waits for the running one", what);
+    while (dispatch_semaphore_wait(gate, dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC)) != 0) {
+        if (caller.isCancelled) return NO;
+    }
+    return YES;
+}
+
+static void wq_full_scan_release(void)
+{
+    dispatch_semaphore_signal(wq_full_scan_gate());
+}
+
 // Asks before a full scan. Returns the scan's stop token, or nil when the user
-// (or the missing UI) declined.
-static WQScanCancellation *wq_full_scan_begin(NSString *what, int64_t ids, double seconds)
+// (or the missing UI) declined. A non-nil token holds the full-scan gate until
+// wq_full_scan_end.
+static WQScanCancellation *wq_full_scan_begin(NSString *what, int64_t ids, double seconds, WQScanCancellation *caller)
 {
     // Without an App Group no container can be opened or named, so a long
     // scan would only produce a list of unusable folders.
@@ -1945,9 +1976,11 @@ static WQScanCancellation *wq_full_scan_begin(NSString *what, int64_t ids, doubl
         wq_log(@"scan: no App Group; full scan of %@ skipped", what);
         return nil;
     }
+    if (!wq_full_scan_acquire(what, caller)) return nil;
     if (!gFullScanConfirm || !gFullScanConfirm(what, ids, seconds)) {
         atomic_store(&gFullScanDeclined, YES);
         wq_log(@"scan: full scan of %@ not started (%lld ids, about %.0f s)", what, (long long)ids, seconds);
+        wq_full_scan_release();
         return nil;
     }
     atomic_store(&gFullScanDeclined, NO);
@@ -1959,8 +1992,10 @@ static WQScanCancellation *wq_full_scan_begin(NSString *what, int64_t ids, doubl
 static void wq_full_scan_end(WQScanCancellation *stop)
 {
     @synchronized (NSNull.null) { if (gFullScanStop == stop) gFullScanStop = nil; }
+    // The window's completion is queued before the next scan can ask.
     if (gFullScanProgress) gFullScanProgress(0, 0, YES);
     if (stop.isCancelled) wq_log(@"scan: full scan stopped");
+    wq_full_scan_release();
 }
 
 // Rough duration of a full scan from a single-thread sample rate.
@@ -2169,7 +2204,7 @@ inodeScan:;
     WQScanCancellation *stop = nil;
     if (!cache) {
         stop = wq_full_scan_begin(inodeOnly ? WQLocalized(@"Internal Daemons") : WQLocalized(@"the app folders"), maxInode,
-                                  wq_full_scan_estimate(maxInode, sampleRate));
+                                  wq_full_scan_estimate(maxInode, sampleRate), nil);
         if (!stop) return nil;
         qos = QOS_CLASS_USER_INITIATED;
     }
@@ -2207,11 +2242,17 @@ inodeScan:;
 // One scan per slot runs at a time. On iOS 26 the Internal Daemons id scan
 // (most of an hour the first time) has its own slot, so the lists that come
 // from the LaunchServices database never wait for it.
+// generation: bumped by wq_enumerate_invalidate. A worker publishes into the
+// slot only when the generation it started with is still current; callers
+// after an invalidation start a new worker, which first waits for the
+// detached one (previous) so the two never scan at the same time.
 @interface WQScanSlot : NSObject
 @property (nonatomic, copy) NSDictionary<NSString *, NSArray<NSString *> *> *scan;
 @property (nonatomic) NSTimeInterval at;
 @property (nonatomic, strong) dispatch_group_t group;
 @property (nonatomic, strong) NSMutableDictionary *box;
+@property (nonatomic) NSUInteger generation;
+@property (nonatomic, strong) dispatch_group_t previous;
 @end
 @implementation WQScanSlot
 @end
@@ -2230,6 +2271,14 @@ static void wq_scan_slots_clear(void)
         WQScanSlot *slot = wq_scan_slot(i == 1);
         slot.scan = nil;
         slot.at = 0;
+        slot.generation++;
+        // A running worker keeps its own waiters but no longer serves new
+        // callers or fills the slot.
+        if (slot.group) {
+            slot.previous = slot.group;
+            slot.group = nil;
+            slot.box = nil;
+        }
     }
 }
 
@@ -2262,24 +2311,39 @@ static NSArray<NSString *> *wq_shared_children(NSString *base, fsid_t fsid, WQSc
             qos_class_t qos = progress ? QOS_CLASS_USER_INITIATED : QOS_CLASS_UTILITY;
             dispatch_group_t started = dispatch_group_create();
             NSMutableDictionary *startedBox = [NSMutableDictionary new];
+            NSUInteger generation = slot.generation;
+            dispatch_group_t previous = slot.previous;
+            slot.previous = nil;
             slot.group = started;
             slot.box = startedBox;
             dispatch_group_enter(started);
             dispatch_async(dispatch_get_global_queue(qos, 0), ^{
+                // A worker detached by an invalidation finishes first.
+                if (previous) dispatch_group_wait(previous, DISPATCH_TIME_FOREVER);
                 NSDictionary *scan = nil;
                 @try {
+#ifdef WQ_ACCESS_TESTING
+                    if (wq_test_shared_scan_runner) scan = wq_test_shared_scan_runner(inodeOnly);
+                    else
+#endif
                     scan = wq_run_shared_scan(fsid, qos, inodeOnly);
                 } @catch (NSException *exception) {
                     wq_log(@"scan: exception %@", exception.reason);
                 }
                 @synchronized (gSharedScanGuard) {
                     if (scan) {
-                        startedBox[@"scan"] = scan;
-                        slot.scan = scan;
-                        slot.at = NSDate.date.timeIntervalSinceReferenceDate;
+                        startedBox[@"scan"] = scan;   // its own waiters asked before any invalidation
+                        if (slot.generation == generation) {
+                            slot.scan = scan;
+                            slot.at = NSDate.date.timeIntervalSinceReferenceDate;
+                        } else {
+                            wq_log(@"scan: result started before a refresh not kept");
+                        }
                     }
-                    slot.group = nil;
-                    slot.box = nil;
+                    if (slot.group == started) {
+                        slot.group = nil;
+                        slot.box = nil;
+                    }
                 }
                 dispatch_group_leave(started);
             });
@@ -2360,7 +2424,7 @@ NSArray<NSString *> *wq_enumerate(NSString *dir, int64_t maxInode, WQScanCancell
     }
     WQScanCancellation *stop = nil;
     if (dynamicBound) {
-        stop = wq_full_scan_begin(base.lastPathComponent, maxInode, wq_full_scan_estimate(maxInode, 0));
+        stop = wq_full_scan_begin(base.lastPathComponent, maxInode, wq_full_scan_estimate(maxInode, 0), cancellation);
         if (!stop) return nil;
     }
     // Either the caller's cancellation or the scan window's Stop ends it.
