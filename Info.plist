@@ -46,6 +46,7 @@
 		<string>es</string>
 		<string>ko</string>
 		<string>pt-BR</string>
+		<string>ru</string>
 	</array>
 	<key>CFBundleName</key>
 	<string>WQFiles</string>
