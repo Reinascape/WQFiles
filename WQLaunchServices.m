@@ -48,6 +48,7 @@ static NSObject *wq_ls_lock(void)
 // The regression tests still exercise discovery through the daemon list.
 #ifdef WQ_LS_TESTING
 static BOOL wq_ls_test_daemon_search = YES;
+void (^wq_ls_test_after_read)(NSString *path);
 #else
 static const BOOL wq_ls_test_daemon_search = NO;
 #endif
@@ -92,6 +93,26 @@ static BOOL wq_ls_candidate_info(NSString *path, struct stat *st)
     NSData *header = wq_read(path, 4, &error);
     if (header.length != 4 || memcmp(header.bytes, "bdsl", 4) != 0) return NO;
     return YES;
+}
+
+// Reads a store between two identical stats (device, inode, size, mtime), so
+// a store rewritten while it was read is never parsed. Both the name loader
+// and the container scan's store hints read through here.
+static NSData *wq_ls_read_stable(NSString *path, struct stat *before, NSString **reason)
+{
+    if (!wq_ls_candidate_info(path, before)) { *reason = @"candidate is no longer valid"; return nil; }
+    NSString *error = nil;
+    NSData *data = wq_read(path, kWQLSMaxStoreBytes + 1, &error);
+    if (!data || data.length > kWQLSMaxStoreBytes) { *reason = error ?: @"store exceeds size limit"; return nil; }
+#ifdef WQ_LS_TESTING
+    if (wq_ls_test_after_read) wq_ls_test_after_read(path);
+#endif
+    struct stat after;
+    if (!wq_ls_candidate_info(path, &after) || !wq_ls_stat_equal(before, &after)) {
+        *reason = @"store changed during read";
+        return nil;
+    }
+    return data;
 }
 
 static BOOL wq_ls_is_newer(NSString *path, const struct stat *st,
@@ -341,28 +362,64 @@ static NSMutableData *wq_ls_container_path_refs(const uint8_t *b, size_t n)
     return refData;
 }
 
-static void wq_ls_log_summary(const uint8_t *b, size_t n, NSString *layout, NSUInteger bundleRecords,
+// The layout hint is diagnostics only: it must stay cheap whatever the store
+// holds (a malformed one can repeat path references everywhere).
+static const NSUInteger kWQLSMaxVoteMatches = 4096;        // references examined
+static const NSUInteger kWQLSMaxVoteSteps = 1u << 20;      // inner-loop steps
+static const NSUInteger kWQLSMaxVoteKeys = 1024;           // distinct (size, offset) pairs
+
+// Votes for (record size, offset of the container reference). *steps counts
+// the inner-loop work; *cutOff says a budget ended the count early.
+static NSCountedSet<NSNumber *> *wq_ls_layout_votes(const uint8_t *b, size_t n, const uint32_t *refs, NSUInteger pathCount,
+                                                    NSUInteger *stepsOut, BOOL *cutOff)
+{
+    NSCountedSet<NSNumber *> *votes = [NSCountedSet new];
+    NSUInteger matches = 0, steps = 0;
+    *cutOff = NO;
+    for (size_t q = 0; q + 4 <= n && !*cutOff; q += 4) {
+        uint32_t v = wq_rd32(b + q);
+        if (!v || (v & 3) || !bsearch(&v, refs, pathCount, sizeof(uint32_t), wq_u32_cmp)) continue;
+        if (++matches > kWQLSMaxVoteMatches) { *cutOff = YES; break; }
+        for (size_t k = 0; k < 0x400 && q >= 8 + k; k += 4) {
+            if (++steps > kWQLSMaxVoteSteps) { *cutOff = YES; break; }
+            uint32_t size = wq_rd32(b + q - 8 - k + 4);
+            if (size >= 0x40 && size <= 0x800 && size % 4 == 0 && k < size) {
+                NSNumber *key = @((uint64_t)size << 16 | k);
+                if (votes.count >= kWQLSMaxVoteKeys && ![votes containsObject:key]) continue;
+                [votes addObject:key];
+            }
+        }
+    }
+    if (stepsOut) *stepsOut = steps;
+    return votes;
+}
+
+#ifdef WQ_LS_TESTING
+NSUInteger wq_ls_test_layout_vote_steps(NSData *data, BOOL *cutOff, NSUInteger *keys, NSUInteger *paths);
+NSUInteger wq_ls_test_layout_vote_steps(NSData *data, BOOL *cutOff, NSUInteger *keys, NSUInteger *paths)
+{
+    NSData *refs = wq_ls_container_path_refs(data.bytes, data.length);
+    NSUInteger steps = 0;
+    NSCountedSet *votes = wq_ls_layout_votes(data.bytes, data.length, refs.bytes, refs.length / sizeof(uint32_t), &steps, cutOff);
+    *keys = votes.count;
+    *paths = refs.length / sizeof(uint32_t);
+    return steps;
+}
+#endif
+
+static void wq_ls_log_summary(const uint8_t *b, size_t n, NSData *refData, NSString *layout, NSUInteger bundleRecords,
                               NSUInteger pluginRecords, NSUInteger names, NSUInteger mapped)
 {
-    NSMutableData *refData = wq_ls_container_path_refs(b, n);
     NSUInteger pathCount = refData.length / sizeof(uint32_t);
-    uint32_t *refs = refData.mutableBytes;
+    const uint32_t *refs = refData.bytes;
     wq_log(@"names: store %.1f MB, layout %@: %lu bundle and %lu plugin records, %lu names, %lu of %lu container paths mapped",
            n / 1048576.0, layout, (unsigned long)bundleRecords, (unsigned long)pluginRecords, (unsigned long)names,
            (unsigned long)mapped, (unsigned long)pathCount);
     if (!pathCount || mapped * 2 >= pathCount) return;
 
-    // Vote for (record size, offset of the container reference).
-    NSCountedSet<NSNumber *> *votes = [NSCountedSet new];
-    for (size_t q = 0; q + 4 <= n; q += 4) {
-        uint32_t v = wq_rd32(b + q);
-        if (!v || (v & 3) || !bsearch(&v, refs, pathCount, sizeof(uint32_t), wq_u32_cmp)) continue;
-        for (size_t k = 0; k < 0x400 && q >= 8 + k; k += 4) {
-            uint32_t size = wq_rd32(b + q - 8 - k + 4);
-            if (size >= 0x40 && size <= 0x800 && size % 4 == 0 && k < size)
-                [votes addObject:@((uint64_t)size << 16 | k)];
-        }
-    }
+    BOOL cutOff = NO;
+    NSCountedSet<NSNumber *> *votes = wq_ls_layout_votes(b, n, refs, pathCount, NULL, &cutOff);
+    if (cutOff) wq_log(@"names: layout hint stopped at its work limit");
     NSArray *top = [votes.allObjects sortedArrayUsingComparator:^NSComparisonResult(NSNumber *x, NSNumber *y) {
         NSUInteger cx = [votes countForObject:x], cy = [votes countForObject:y];
         return cx > cy ? NSOrderedAscending : cx < cy ? NSOrderedDescending : [x compare:y];
@@ -498,7 +555,7 @@ static BOOL wq_parse_ls_store(NSData *data, NSDictionary **displayOut,
         anyPlugins += layoutPlugins[l].length / (2 * sizeof(uint32_t));
     }
     if (!anyRecords) {
-        wq_ls_log_summary(b, n, @"none", 0, anyPlugins, 0, 0);
+        wq_ls_log_summary(b, n, wq_ls_container_path_refs(b, n), @"none", 0, anyPlugins, 0, 0);
         wq_log(@"names: LaunchServices store contains no bundle records");
         return NO;
     }
@@ -578,12 +635,13 @@ static BOOL wq_parse_ls_store(NSData *data, NSDictionary **displayOut,
         if (newSummary) lastSummary = summary;
     }
     if (newSummary && samples.count) wq_log(@"names: sample: %@", [samples componentsJoinedByString:@", "]);
-    if (newSummary) wq_ls_log_summary(b, n, @(kWQLSLayouts[chosen].label), layoutRecs[chosen].length / (5 * sizeof(uint32_t)),
+    NSData *pathRefs = wq_ls_container_path_refs(b, n);
+    if (newSummary) wq_ls_log_summary(b, n, pathRefs, @(kWQLSLayouts[chosen].label), layoutRecs[chosen].length / (5 * sizeof(uint32_t)),
                       layoutPlugins[chosen].length / (2 * sizeof(uint32_t)), display.count, containers.count);
     // A layout that maps only a small part of the container paths in the store
     // is the wrong one (its names are wrong too): don't use the store at all,
     // so the app list falls back to the scan instead of showing a few apps.
-    NSUInteger storePaths = wq_ls_container_path_refs(b, n).length / sizeof(uint32_t);
+    NSUInteger storePaths = pathRefs.length / sizeof(uint32_t);
     if (storePaths >= 20 && containers.count * 2 < storePaths) {
         if (newSummary)
             wq_log(@"names: layout %s maps only %lu of %lu container paths; this iOS version's database layout isn't known, so it isn't used",
@@ -601,6 +659,7 @@ static NSDictionary *gLSDisplay;
 static NSDictionary *gLSBundleName;
 static NSDictionary *gLSContainers;
 static NSDictionary *gLSBundlePaths;
+static NSArray<NSString *> *gLSAllPaths;   // containers and app groups, for the container scan
 static NSString *gLSStorePath;
 static NSDictionary *gLSStoreSignature;
 static BOOL gLSLoaded;
@@ -614,6 +673,7 @@ static void wq_ls_clear_snapshot_if_changed(BOOL changed)
     gLSBundleName = nil;
     gLSContainers = nil;
     gLSBundlePaths = nil;
+    gLSAllPaths = nil;
     gLSStorePath = nil;
     gLSStoreSignature = nil;
     gLSLoaded = NO;
@@ -626,6 +686,47 @@ static void wq_ls_note_failure(NSTimeInterval now, NSString *reason)
     NSTimeInterval delay = (NSTimeInterval)(1u << MIN(shift, (NSUInteger)5));
     gLSNextRetryAt = now + delay;
     if (reason) wq_log(@"names: %@; retrying in %.0f s", reason, delay);
+}
+
+// Every data container the store maps plus the group containers of the
+// installed apps (not mapped to an owner; the list only needs them).
+static NSArray<NSString *> *wq_ls_all_paths(NSData *data, NSDictionary *containers)
+{
+    NSMutableSet<NSString *> *all = [NSMutableSet setWithArray:containers.allKeys];
+    static const char needle[] = "/mobile/Containers/Shared/AppGroup/";
+    const uint8_t *bytes = data.bytes, *cursor = bytes, *end = bytes + data.length;
+    while (cursor < end) {
+        const uint8_t *hit = memmem(cursor, (size_t)(end - cursor), needle, sizeof(needle) - 1);
+        if (!hit) break;
+        cursor = hit + sizeof(needle) - 1;
+        if ((size_t)(end - cursor) < 36) break;
+        NSString *uuid = [[NSString alloc] initWithBytes:cursor length:36 encoding:NSASCIIStringEncoding];
+        if (!uuid || ![[NSUUID alloc] initWithUUIDString:uuid]) continue;
+        [all addObject:[@"/private/var/mobile/Containers/Shared/AppGroup/" stringByAppendingString:uuid.uppercaseString]];
+    }
+    return all.allObjects;
+}
+
+// Publishes one snapshot of a store read by wq_ls_read_stable and parsed
+// completely: names, container and bundle maps, the container list, its path
+// and signature, and the remembered location all change together. The
+// dictionaries are immutable copies, so readers see either the previous
+// snapshot or this one.
+static void wq_ls_publish_locked(NSString *path, const struct stat *st, NSDictionary *display, NSDictionary *bundleName,
+                                 NSDictionary *containers, NSDictionary *bundlePaths, NSArray<NSString *> *allPaths)
+{
+    gLSDisplay = [display copy] ?: @{};
+    gLSBundleName = [bundleName copy] ?: @{};
+    gLSContainers = [containers copy] ?: @{};
+    gLSBundlePaths = [bundlePaths copy] ?: @{};
+    gLSAllPaths = [allPaths copy] ?: @[];
+    gLSStorePath = [path copy];
+    gLSStoreSignature = [wq_ls_signature(st) copy];
+    gLSLoaded = YES;
+    gLSFailureCount = 0;
+    gLSNextRetryAt = 0;
+    [NSUserDefaults.standardUserDefaults setObject:gLSStorePath forKey:kWQLSStoreKey];
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:kWQLSMissKey];
 }
 
 static void wq_load_ls_names_locked(void)
@@ -686,11 +787,12 @@ static void wq_load_ls_names_locked(void)
         return;
     }
 
+    // Not published when the store changed while it was read.
     NSString *error = nil;
-    NSData *data = wq_read(path, kWQLSMaxStoreBytes + 1, &error);
-    if (!data || data.length > kWQLSMaxStoreBytes) {
+    NSData *data = wq_ls_read_stable(path, &before, &error);
+    if (!data) {
         wq_ls_clear_snapshot_if_changed(snapshotChanged);
-        wq_ls_note_failure(now, wq_ls_error(path, error ?: @"store exceeds size limit"));
+        wq_ls_note_failure(now, wq_ls_error(path, error));
         return;
     }
 
@@ -700,27 +802,7 @@ static void wq_load_ls_names_locked(void)
         wq_ls_note_failure(now, wq_ls_error(path, @"store rejected by bounded parser"));
         return;
     }
-
-    // Do not publish a snapshot that was changed while it was being read or parsed.
-    struct stat after;
-    if (!wq_ls_candidate_info(path, &after) || !wq_ls_stat_equal(&before, &after)) {
-        wq_ls_clear_snapshot_if_changed(snapshotChanged);
-        wq_ls_note_failure(now, wq_ls_error(path, @"store changed during read"));
-        return;
-    }
-
-    // Dictionaries are immutable copies and are assigned only after a complete,
-    // validated parse. Readers therefore see either the previous snapshot or this one.
-    gLSDisplay = [display copy] ?: @{};
-    gLSBundleName = [bundleName copy] ?: @{};
-    gLSContainers = [containers copy] ?: @{};
-    gLSBundlePaths = [bundlePaths copy] ?: @{};
-    gLSStorePath = [path copy];
-    gLSStoreSignature = [beforeSignature copy];
-    gLSLoaded = YES;
-    gLSFailureCount = 0;
-    gLSNextRetryAt = 0;
-    [NSUserDefaults.standardUserDefaults setObject:gLSStorePath forKey:kWQLSStoreKey];
+    wq_ls_publish_locked(path, &before, display, bundleName, containers, bundlePaths, wq_ls_all_paths(data, containers));
 }
 
 // Apple's own apps and services: LaunchServices refuses this app on 27.x
@@ -879,38 +961,36 @@ NSString *wq_display_name(NSString *bundleID)
 
 NSArray<NSString *> *wq_ls_container_paths(NSString *storeHint)
 {
-    // No lock and no scan here: the container scan calls this while a name
-    // load may be waiting for that scan.
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    NSString *path = storeHint.length ? storeHint : [defaults stringForKey:kWQLSStoreKey];
+    // No scan here, and the lock is only held to compare or publish a
+    // snapshot (never during the read or parse): the container scan calls
+    // this while a name load may be waiting for that scan.
+    NSString *path = storeHint.length ? storeHint : [NSUserDefaults.standardUserDefaults stringForKey:kWQLSStoreKey];
     if (!path.length) return nil;
+    // The published snapshot of this exact store: no second read or parse.
+    struct stat current;
+    if (wq_ls_candidate_info(path, &current)) {
+        @synchronized (wq_ls_lock()) {
+            if (gLSLoaded && gLSAllPaths && [path isEqualToString:gLSStorePath] &&
+                wq_ls_signature_equal(wq_ls_signature(&current), gLSStoreSignature))
+                return gLSContainers.count >= 2 ? gLSAllPaths : nil;
+        }
+    }
+    struct stat before;
     NSString *error = nil;
-    NSData *data = wq_read(path, kWQLSMaxStoreBytes + 1, &error);
-    if (!data || data.length > kWQLSMaxStoreBytes) {
-        wq_log(@"names: cannot read %@ (%@)", path, error ?: @"too large");
+    NSData *data = wq_ls_read_stable(path, &before, &error);
+    if (!data) {
+        wq_log(@"names: cannot read %@ (%@)", path, error);
         return nil;
     }
-    NSDictionary *containers = nil;
-    if (!wq_parse_ls_store(data, NULL, NULL, &containers, NULL) || containers.count < 2) return nil;
-    if (storeHint.length) {
-        [defaults setObject:storeHint forKey:kWQLSStoreKey];
-        [defaults removeObjectForKey:kWQLSMissKey];
+    NSDictionary *display = nil, *bundleName = nil, *containers = nil, *bundlePaths = nil;
+    if (!wq_parse_ls_store(data, &display, &bundleName, &containers, &bundlePaths) || containers.count < 2) return nil;
+    NSArray<NSString *> *all = wq_ls_all_paths(data, containers);
+    // A hint (a newer store found by the scan) or a changed remembered store
+    // replaces the loaded names and maps too, not only the remembered path.
+    @synchronized (wq_ls_lock()) {
+        wq_ls_publish_locked(path, &before, display, bundleName, containers, bundlePaths, all);
     }
-    // App group containers aren't mapped to an owner here; the store lists
-    // the group containers of installed apps, which is what the list needs.
-    NSMutableSet<NSString *> *all = [NSMutableSet setWithArray:containers.allKeys];
-    static const char needle[] = "/mobile/Containers/Shared/AppGroup/";
-    const uint8_t *bytes = data.bytes, *cursor = bytes, *end = bytes + data.length;
-    while (cursor < end) {
-        const uint8_t *hit = memmem(cursor, (size_t)(end - cursor), needle, sizeof(needle) - 1);
-        if (!hit) break;
-        cursor = hit + sizeof(needle) - 1;
-        if ((size_t)(end - cursor) < 36) break;
-        NSString *uuid = [[NSString alloc] initWithBytes:cursor length:36 encoding:NSASCIIStringEncoding];
-        if (!uuid || ![[NSUUID alloc] initWithUUIDString:uuid]) continue;
-        [all addObject:[@"/private/var/mobile/Containers/Shared/AppGroup/" stringByAppendingString:uuid.uppercaseString]];
-    }
-    return all.allObjects;
+    return all;
 }
 
 NSString *wq_bundle_path_for_id(NSString *bundleID)

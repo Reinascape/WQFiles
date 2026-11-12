@@ -206,6 +206,76 @@ static void TestOversizedStoreFailsClosed(NSString *path)
     WQCheck(wq_display_name(@"com.example.international") == nil);
 }
 
+#ifdef WQ_LS_TESTING
+extern void (^wq_ls_test_after_read)(NSString *path);
+NSUInteger wq_ls_test_layout_vote_steps(NSData *data, BOOL *cutOff, NSUInteger *keys, NSUInteger *paths);
+
+// A store hint publishes one coherent snapshot (names, maps and remembered
+// location together), read with the same stable before/after check as the
+// name loader; the published snapshot is reused instead of parsed again.
+static void TestStoreHintPublishesSnapshot(NSString *path)
+{
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    WriteData(StoreWithName(@"Old name"), path);
+    [defaults setObject:path forKey:@"WQLaunchServicesStore"];
+    WQCheck([wq_display_name(@"com.example.international") isEqualToString:@"Old name"]);
+
+    NSString *hint = [path stringByAppendingString:@".hint"];
+    WriteData(StoreWithContainers(), hint);
+    __block BOOL mutate = YES;
+    __block int reads = 0;
+    wq_ls_test_after_read = ^(NSString *readPath) {
+        if (![readPath isEqualToString:hint]) return;
+        reads++;
+        if (!mutate) return;
+        NSMutableData *grown = [StoreWithContainers() mutableCopy];
+        [grown increaseLengthBy:0x100];
+        WriteData(grown, hint);
+    };
+    WQCheck(wq_ls_container_paths(hint) == nil);   // rewritten while it was read
+    WQCheck([[defaults stringForKey:@"WQLaunchServicesStore"] isEqualToString:path]);
+    WQCheck([wq_display_name(@"com.example.international") isEqualToString:@"Old name"]);
+
+    mutate = NO;
+    WriteData(StoreWithContainers(), hint);
+    NSArray<NSString *> *paths = wq_ls_container_paths(hint);
+    WQCheck([paths containsObject:kAppPath] && [paths containsObject:kPluginPath]);
+    WQCheck([[defaults stringForKey:@"WQLaunchServicesStore"] isEqualToString:hint]);
+    WQCheck([wq_display_name(@"com.example.app") isEqualToString:@"AppName8"]);
+    WQCheck([wq_bundle_id_for_container(kAppPath) isEqualToString:@"com.example.app"]);
+    WQCheck(wq_display_name(@"com.example.international") == nil);   // old snapshot replaced
+
+    reads = 0;
+    WQCheck([wq_ls_container_paths(nil) count] == paths.count && reads == 0);   // snapshot reused
+    wq_ls_test_after_read = nil;
+    [[NSFileManager defaultManager] removeItemAtPath:hint error:nil];
+    [defaults setObject:path forKey:@"WQLaunchServicesStore"];
+}
+
+// The low-mapping layout diagnostics stop at a fixed work budget however
+// many references a malformed store repeats.
+static void TestLayoutDiagnosticsBudget(void)
+{
+    NSMutableData *data = [NSMutableData dataWithLength:2u * 1024u * 1024u];
+    memcpy(data.mutableBytes, "bdsl", 4);
+    NSMutableArray<NSNumber *> *refs = [NSMutableArray new];
+    for (uint32_t i = 0; i < 30; i++) {
+        NSString *container = [NSString stringWithFormat:@"/private/var/mobile/Containers/Data/Application/%@",
+                               NSUUID.UUID.UUIDString];
+        PutString(data, 0x1000 + i * 0x80, i + 1, container);
+        [refs addObject:@((i + 1) << 2)];
+    }
+    for (NSUInteger o = 0x4000; o + 4 <= data.length; o += 4) Put32(data, o, refs[(o / 4) % refs.count].unsignedIntValue);
+    BOOL cutOff = NO;
+    NSUInteger keys = 0, pathCount = 0;
+    NSUInteger steps = wq_ls_test_layout_vote_steps(data, &cutOff, &keys, &pathCount);
+    WQCheck(pathCount == 30);
+    WQCheck(cutOff);
+    WQCheck(steps <= (1u << 20) + 1);
+    WQCheck(keys <= 1024);
+}
+#endif
+
 int main(void)
 {
     @autoreleasepool {
@@ -215,6 +285,10 @@ int main(void)
             [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WQLaunchServicesStore"];
             TestRetryAfterDiscoveryFailure(path);
             TestRefreshAndUnicodeSafety(path);
+#ifdef WQ_LS_TESTING
+            TestStoreHintPublishesSnapshot(path);
+            TestLayoutDiagnosticsBudget();
+#endif
             TestContainerMapping(path);
             TestOversizedStoreFailsClosed(path);
         } @finally {

@@ -1748,6 +1748,8 @@ void wq_enumerate_invalidate(void)
     wq_shared_scan_setup();
     @synchronized (gSharedScanGuard) { wq_scan_slots_clear(); }
     wq_label_caches_invalidate();
+    // A refresh also retries the background LaunchServices database search.
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WQLaunchServicesDiscoveryMissedAt"];
 }
 
 
@@ -2114,6 +2116,39 @@ static NSString *wq_scan_for_ls_store(fsid_t fsid, int64_t maxInode, qos_class_t
     return found;
 }
 
+// When the container manager lists the containers, the database search in
+// wq_containers_from_ls_store doesn't run, yet the name loader only reads a
+// remembered database: look for it in the background (the same bounded id
+// search), so app names and labels don't stay missing after a cold start.
+// One search at a time; after a miss, again only after a day or a refresh.
+static NSString *const kWQStoreDiscoveryMissKey = @"WQLaunchServicesDiscoveryMissedAt";
+static _Atomic BOOL gStoreDiscoveryRunning;
+
+static void wq_discover_ls_store_in_background(fsid_t fsid)
+{
+    if (!gContainerListProvider) return;
+    NSDate *missed = [NSUserDefaults.standardUserDefaults objectForKey:kWQStoreDiscoveryMissKey];
+    if ([missed isKindOfClass:NSDate.class] && fabs(missed.timeIntervalSinceNow) < 24 * 60 * 60) return;
+    if (atomic_exchange(&gStoreDiscoveryRunning, YES)) return;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        @try {
+            if (gContainerListProvider(nil).count >= 2) return;   // remembered and readable
+            int64_t probeInode = 0;
+            int64_t maxInode = wq_volume_max_inode(fsid, &probeInode);
+            NSString *store = maxInode > 0 ? wq_scan_for_ls_store(fsid, maxInode, QOS_CLASS_UTILITY, nil) : nil;
+            NSUInteger listed = store ? gContainerListProvider(store).count : 0;
+            if (listed < 2) {
+                [NSUserDefaults.standardUserDefaults setObject:NSDate.date forKey:kWQStoreDiscoveryMissKey];
+                wq_log(@"scan: LaunchServices database for app names %@", store ? @"found but not usable" : @"not found by id");
+            } else {
+                wq_log(@"scan: LaunchServices database for app names found by id (%lu containers)", (unsigned long)listed);
+            }
+        } @finally {
+            atomic_store(&gStoreDiscoveryRunning, NO);
+        }
+    });
+}
+
 // The LaunchServices database keeps containers of earlier installs that no
 // longer exist. Drop those (lstat says ENOENT even without access); keep
 // anything that exists or can't be checked.
@@ -2182,7 +2217,10 @@ static NSDictionary<NSString *, NSArray<NSString *> *> *wq_run_shared_scan(fsid_
     wq_log(@"scan: %@", mcmSummary);
     // Other apps' containers listed: no scan needed. A list with only this
     // app's own container is not enough.
-    if ([listed[roots[0]] count] > 1) return listed;
+    if ([listed[roots[0]] count] > 1) {
+        wq_discover_ls_store_in_background(fsid);
+        return listed;
+    }
     NSString *lsSummary = nil;
     NSDictionary<NSString *, NSArray<NSString *> *> *lsListed = wq_lsapi_list_containers(roots, &lsSummary);
     wq_log(@"scan: %@", lsSummary);
