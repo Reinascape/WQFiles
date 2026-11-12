@@ -209,6 +209,46 @@ static inline BOOL WQRecoverCacheSwapAtPath(NSString *libraryPath)
     return ok;
 }
 
+// Manual repair (the startup check's Reset Access Cache): puts Library/Caches
+// back to a plain folder whatever state it is in, e.g. a symbolic link left
+// by another worse_query app sharing the App Group (issue #42). Nothing is
+// deleted: anything in the way is renamed to .wq-caches-reset-<id>. `done`
+// gets a short description of the steps, for the Log.
+static inline BOOL WQCacheSwapReset(int library, NSMutableArray<NSString *> *done)
+{
+    if (unlinkat(library, WQCacheMarkerTemp, 0) == 0) [done addObject:@"removed the temporary marker"];
+    NSString *(^aside)(void) = ^NSString *{ return [@".wq-caches-reset-" stringByAppendingString:NSUUID.UUID.UUIDString]; };
+    struct stat st;
+    if (fstatat(library, "Caches", &st, AT_SYMLINK_NOFOLLOW) == 0) {
+        if (S_ISLNK(st.st_mode)) {
+            if (unlinkat(library, "Caches", 0) != 0) return NO;
+            [done addObject:@"removed the Caches link"];
+        } else if (!S_ISDIR(st.st_mode)) {
+            NSString *name = aside();
+            if (renameatx_np(library, "Caches", library, name.fileSystemRepresentation, RENAME_EXCL) != 0) return NO;
+            [done addObject:[@"moved a non-folder Caches to " stringByAppendingString:name]];
+        }
+    } else if (errno != ENOENT) return NO;
+    if (fstatat(library, WQCacheSaved, &st, AT_SYMLINK_NOFOLLOW) == 0) {
+        BOOL cachesFree = fstatat(library, "Caches", &st, AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT;
+        if (cachesFree) {
+            if (renameatx_np(library, WQCacheSaved, library, "Caches", RENAME_EXCL) != 0) return NO;
+            [done addObject:@"restored the preserved Caches"];
+        } else {
+            NSString *name = aside();
+            if (renameatx_np(library, WQCacheSaved, library, name.fileSystemRepresentation, RENAME_EXCL) != 0) return NO;
+            [done addObject:[@"moved the preserved Caches to " stringByAppendingString:name]];
+        }
+    } else if (errno != ENOENT) return NO;
+    if (unlinkat(library, WQCacheMarker, 0) == 0) [done addObject:@"removed the swap marker"];
+    else if (errno != ENOENT) return NO;
+    if (fstatat(library, "Caches", &st, AT_SYMLINK_NOFOLLOW) != 0) {
+        if (errno != ENOENT || mkdirat(library, "Caches", 0755) != 0) return NO;
+        [done addObject:@"created Caches"];
+    } else if (!S_ISDIR(st.st_mode)) { errno = EINVAL; return NO; }
+    return fsync(library) == 0;
+}
+
 static inline BOOL WQCacheSwapBegin(int library, NSString *target)
 {
     if (!WQCacheSwapRecover(library)) return NO;

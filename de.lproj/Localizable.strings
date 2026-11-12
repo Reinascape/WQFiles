@@ -850,3 +850,9 @@
 "WQ Files stopped here instead of showing empty or wrong lists. A new iOS version can block its sandbox access; please send the Log with your device and iOS version." = "WQ Files hat hier angehalten, statt leere oder falsche Listen anzuzeigen. Eine neue iOS-Version kann den Sandbox-Zugriff blockieren; bitte sende das Log zusammen mit deinem Gerät und deiner iOS-Version.";
 "iOS %@ hasn't been tested with this version of WQ Files." = "iOS %@ wurde mit dieser Version von WQ Files noch nicht getestet.";
 "iOS version" = "iOS-Version";
+"Reset Access Cache" = "Zugriffs-Cache zurücksetzen";
+"Reset Access Cache?" = "Zugriffs-Cache zurücksetzen?";
+"Another app that shares WQ Files' App Group (for example one signed with the same tool) can leave its cache folder in a state that blocks sandbox access. This puts it back; nothing is deleted." = "Eine andere App, die die App Group von WQ Files teilt (etwa eine mit demselben Tool signierte), kann ihren Cache-Ordner in einem Zustand hinterlassen, der den Sandbox-Zugriff blockiert. Das stellt ihn wieder her; es wird nichts gelöscht.";
+"Reset" = "Zurücksetzen";
+"Reset failed" = "Zurücksetzen fehlgeschlagen";
+"The App Group is missing." = "Die App Group fehlt.";

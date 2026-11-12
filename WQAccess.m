@@ -215,6 +215,34 @@ static int64_t wq_query(NSString *target, BOOL altFlags)
     return handle;
 }
 
+BOOL wq_reset_access_cache(NSString **errorText)
+{
+    NSString *group = wq_app_group();
+    NSURL *root = group ? [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:group] : nil;
+    if (!root) { if (errorText) *errorText = WQLocalized(@"The App Group is missing."); return NO; }
+    NSString *libraryPath = [root.path stringByAppendingPathComponent:@"Library"];
+    [NSFileManager.defaultManager createDirectoryAtPath:libraryPath withIntermediateDirectories:YES attributes:nil error:nil];
+    int library = WQOpenDirectoryNoLinks(libraryPath);
+    if (library < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
+    int lock = WQOpenRegularAt(library, ".wq-caches-lock", O_RDWR | O_CREAT, 0600);
+    if (lock < 0 || flock(lock, LOCK_EX | LOCK_NB) != 0) {
+        int err = errno;
+        if (lock >= 0) close(lock);
+        close(library);
+        if (errorText) *errorText = wq_errno(err);
+        return NO;
+    }
+    NSMutableArray<NSString *> *done = [NSMutableArray new];
+    BOOL ok = WQCacheSwapReset(library, done);
+    int err = errno;
+    close(lock);
+    close(library);
+    wq_log(@"access cache reset in %@: %@%@", libraryPath, done.count ? [done componentsJoinedByString:@", "] : @"nothing to repair",
+           ok ? @"" : [@"; FAILED: " stringByAppendingString:wq_errno(err)]);
+    if (!ok && errorText) *errorText = wq_errno(err);
+    return ok;
+}
+
 static NSMutableDictionary<NSString *, NSNumber *> *gGrants;
 static NSMutableArray<NSString *> *gGrantOrder;   // oldest first
 // The kernel limits how many sandbox extensions a process may hold. Keep a

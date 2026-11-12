@@ -36,6 +36,34 @@ int main(void)
             check([fm fileExistsAtPath:[library stringByAppendingPathComponent:@".wq-caches-preserved/nested/sentinel"]], @"conflict retains preserved original");
             check(unlinkat(fd, "Caches", AT_REMOVEDIR) == 0 && WQCacheSwapRecover(fd), @"recover after fixture conflict removed");
             check(WQCacheSwapRecover(fd), @"recovery idempotent");
+            // Reset Access Cache (#42): a foreign Caches link without our
+            // marker blocks every token; reset clears it, keeps everything.
+            check(renameat(fd, "Caches", fd, "Caches-real") == 0 && symlinkat("/private/var/other-app-target", fd, "Caches") == 0,
+                  @"simulate another app's Caches link");
+            check(!WQCacheSwapBegin(fd, @"/private/var/nonexistent-token-target"), @"a foreign link blocks token requests");
+            NSMutableArray *steps = [NSMutableArray new];
+            check(WQCacheSwapReset(fd, steps) && steps.count, @"reset repairs a foreign link");
+            struct stat cst;
+            check(fstatat(fd, "Caches", &cst, AT_SYMLINK_NOFOLLOW) == 0 && S_ISDIR(cst.st_mode), @"Caches is a folder again");
+            check(rmdir([library stringByAppendingPathComponent:@"Caches"].fileSystemRepresentation) == 0 &&
+                  renameat(fd, "Caches-real", fd, "Caches") == 0, @"restore real Caches fixture");
+            // Interrupted swap whose saved folder conflicts with a new Caches.
+            check(WQCacheSwapBegin(fd, @"/private/var/nonexistent-token-target"), @"begin reset conflict fixture");
+            check(unlinkat(fd, "Caches", 0) == 0 && mkdirat(fd, "Caches", 0755) == 0, @"new Caches beside the preserved one");
+            check(!WQCacheSwapRecover(fd), @"recovery refuses the conflict");
+            [steps removeAllObjects];
+            check(WQCacheSwapReset(fd, steps), @"reset resolves the conflict");
+            check(WQCacheSwapRecover(fd) && WQCacheSwapBegin(fd, @"/private/var/nonexistent-token-target") && WQCacheSwapRecover(fd),
+                  @"token requests work after reset");
+            NSArray *kept = [[fm contentsOfDirectoryAtPath:library error:nil] filteredArrayUsingPredicate:
+                             [NSPredicate predicateWithFormat:@"SELF BEGINSWITH '.wq-caches-reset-'"]];
+            check(kept.count == 1 && [fm fileExistsAtPath:[library stringByAppendingPathComponent:
+                  [kept.firstObject stringByAppendingPathComponent:@"nested/sentinel"]]], @"reset kept the original contents");
+            [steps removeAllObjects];
+            check(WQCacheSwapReset(fd, steps) && steps.count == 0, @"reset of a healthy cache does nothing");
+            check([fm removeItemAtPath:[library stringByAppendingPathComponent:kept.firstObject] error:nil] &&
+                  [fm createDirectoryAtPath:nested withIntermediateDirectories:YES attributes:nil error:nil] &&
+                  [bytes writeToFile:sentinel atomically:YES], @"restore sentinel fixture");
             check(WQRecoverCacheSwapAtPath(library), @"normal startup requires no recovery");
             check(![fm fileExistsAtPath:[library stringByAppendingPathComponent:@".wq-caches-lock"]], @"normal startup creates no lock or marker");
             check(WQCacheSwapBegin(fd, @"/private/var/nonexistent-token-target"), @"begin startup recovery fixture");

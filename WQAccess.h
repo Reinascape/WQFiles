@@ -23,6 +23,10 @@ NSString *_Nullable wq_app_group(void);
 // Asks for a sandbox extension covering path (once per path). Returns YES
 // when one is held for it.
 BOOL wq_grant(NSString *path);
+// Repairs the token cache (App Group Library/Caches) when another app sharing
+// the App Group, or an interrupted run, left it in a state token requests
+// refuse. Renames, never deletes. Logs what it did.
+BOOL wq_reset_access_cache(NSString *_Nullable *_Nullable errorText);
 
 // Directory listing; asks for access when the plain call is refused.
 NSArray<NSString *> *_Nullable wq_list(NSString *dir, NSString *_Nullable *_Nullable errorText);

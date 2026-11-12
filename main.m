@@ -3255,11 +3255,30 @@ static NSString *wq_language_name(NSString *code)
 }
 
 // The buttons under the checks: 0 Try Again, 1 Log, 3 Signing Help (when
-// the App Group is missing), 2 Continue Anyway.
+// the App Group is missing), 4 Reset Access Cache (when no folder opens),
+// 2 Continue Anyway.
 - (NSArray<NSNumber *> *)actions
 {
     BOOL noGroup = _checks.count && _checks[0].state == WQHealthFailed;
-    return noGroup ? @[@0, @1, @3, @2] : @[@0, @1, @2];
+    BOOL noAccess = NO;
+    for (WQHealthCheck *c in _checks)
+        if ([c.key isEqualToString:@"Sandbox access"] && c.state == WQHealthFailed) noAccess = YES;
+    if (noGroup) return @[@0, @1, @3, @2];
+    return noAccess ? @[@0, @4, @1, @2] : @[@0, @1, @2];
+}
+
+- (void)resetAccessCache
+{
+    UIAlertController *alert = wq_alert_controller(@"Reset Access Cache?",
+        @"Another app that shares WQ Files' App Group (for example one signed with the same tool) can leave its cache folder in a state that blocks sandbox access. This puts it back; nothing is deleted.",
+        UIAlertControllerStyleAlert);
+    [alert addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
+    [alert addAction:wq_alert_action(@"Reset", UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) {
+        NSString *error = nil;
+        if (wq_reset_access_cache(&error)) { [self retry]; return; }
+        wq_alert(self, @"Reset failed", error ?: @"see Log");
+    })];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return _running ? 1 : 2; }
@@ -3307,7 +3326,7 @@ static NSString *wq_language_name(NSString *code)
         c.image = [UIImage systemImageNamed:symbols[(NSUInteger)check.state]];
         c.imageProperties.tintColor = colors[(NSUInteger)check.state];
     } else {
-        NSArray *titles = @[@"Try Again", @"Log", @"Continue Anyway", @"Signing Help"];
+        NSArray *titles = @[@"Try Again", @"Log", @"Continue Anyway", @"Signing Help", @"Reset Access Cache"];
         NSUInteger action = self.actions[(NSUInteger)indexPath.row].unsignedIntegerValue;
         c = [UIListContentConfiguration cellConfiguration];
         c.text = WQLocalized(titles[action]);
@@ -3332,6 +3351,9 @@ static NSString *wq_language_name(NSString *code)
         case 3:
             [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"https://github.com/kolbicz/WQFiles#signing-the-app-group"]
                                              options:@{} completionHandler:nil];
+            break;
+        case 4:
+            [self resetAccessCache];
             break;
         default: {
             UIAlertController *alert = wq_alert_controller(@"Continue Anyway?",

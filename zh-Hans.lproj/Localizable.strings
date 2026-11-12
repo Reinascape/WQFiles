@@ -854,3 +854,9 @@
 "WQ Files stopped here instead of showing empty or wrong lists. A new iOS version can block its sandbox access; please send the Log with your device and iOS version." = "WQ Files 已在此停止，而不是显示空的或错误的列表。新的 iOS 版本可能会阻止其沙盒访问；请将日志连同你的设备和 iOS 版本一起发送。";
 "iOS %@ hasn't been tested with this version of WQ Files." = "iOS %@ 尚未在此版本的 WQ Files 上测试过。";
 "iOS version" = "iOS 版本";
+"Reset Access Cache" = "重置访问缓存";
+"Reset Access Cache?" = "重置访问缓存？";
+"Another app that shares WQ Files' App Group (for example one signed with the same tool) can leave its cache folder in a state that blocks sandbox access. This puts it back; nothing is deleted." = "与 WQ Files 共用 App Group 的其他应用（例如用同一工具签名的应用）可能会让其缓存文件夹处于阻止沙盒访问的状态。此操作会将其恢复；不会删除任何内容。";
+"Reset" = "重置";
+"Reset failed" = "重置失败";
+"The App Group is missing." = "缺少 App Group。";
