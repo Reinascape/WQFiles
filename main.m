@@ -31,6 +31,7 @@
 #import "WQMediaStream.h"
 #import <AVKit/AVKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import <objc/runtime.h>
 #import <sys/mount.h>
 
 static BOOL wq_looks_like_uuid(NSString *name)
@@ -528,56 +529,105 @@ static WQOpenMode wq_sniff(NSData *head)
 
 static NSUInteger wq_open_generation;
 
-// Audio and video by extension (the first bytes of MP4/MOV look like HEIC images).
+// Audio and video by extension; local HLS playlists open as text (see
+// WQMediaStream).
 static BOOL wq_is_media_name(NSString *name)
 {
-    static NSSet<NSString *> *exts;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        exts = [NSSet setWithArray:@[@"mp3", @"m4a", @"m4b", @"aac", @"wav", @"aif", @"aiff", @"caf", @"flac", @"alac",
-                                     @"mp4", @"m4v", @"mov", @"3gp", @"3g2", @"m3u8"]];
-    });
-    return [exts containsObject:name.pathExtension.lowercaseString];
+    return [WQMediaStream opensAsMediaByDefault:name];
 }
 
-// Copies the file to WQ Files' temporary folder (the previous copy is
-// removed) and calls back on the main queue with the local URL or an error.
-static void wq_media_copy(NSString *path, void (^done)(NSURL *_Nullable local, NSString *_Nullable error))
+// Fallback copies live in their own folder, tmp/wq-media/<UUID>/, owned by
+// one object. The player that plays the copy keeps the owner; when the player
+// goes away (or a late copy finds no player), the owner deletes exactly that
+// folder, so one player's copy never removes another's.
+@interface WQMediaCopyDir : NSObject
+@property (nonatomic, readonly, copy) NSString *path;
+@end
+
+@implementation WQMediaCopyDir
+
++ (NSString *)root
+{
+    return [NSTemporaryDirectory() stringByAppendingPathComponent:@"wq-media"];
+}
+
+- (instancetype)init
+{
+    if ((self = [super init])) _path = [WQMediaCopyDir.root stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    return self;
+}
+
+- (void)dealloc
+{
+    NSString *path = _path;
+    dispatch_async(wq_io(), ^{ [NSFileManager.defaultManager removeItemAtPath:path error:nil]; });
+}
+
+@end
+
+static char kWQMediaCopyDirsKey;
+
+static void wq_media_keep_copy_dir(UIViewController *owner, WQMediaCopyDir *dir)
+{
+    NSMutableArray *dirs = objc_getAssociatedObject(owner, &kWQMediaCopyDirsKey);
+    if (!dirs) {
+        dirs = [NSMutableArray new];
+        objc_setAssociatedObject(owner, &kWQMediaCopyDirsKey, dirs, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    [dirs addObject:dir];
+}
+
+// At launch: every copy left in tmp/wq-media belongs to an earlier run. Runs
+// on the serial I/O queue ahead of any new copy.
+static void wq_media_sweep_stale(void)
 {
     dispatch_async(wq_io(), ^{
-        NSString *dir = [NSTemporaryDirectory() stringByAppendingPathComponent:@"wq-media"];
-        NSFileManager *fm = NSFileManager.defaultManager;
-        [fm removeItemAtPath:dir error:nil];
-        [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-        NSString *local = [dir stringByAppendingPathComponent:path.lastPathComponent];
+        NSString *root = WQMediaCopyDir.root;
+        if ([NSFileManager.defaultManager removeItemAtPath:root error:nil]) wq_log(@"media: removed stale copies");
+    });
+}
+
+// Copies the file into a new folder of its own and calls back on the main
+// queue with the local URL (and the folder's owner) or an error.
+static void wq_media_copy(NSString *path, void (^done)(NSURL *_Nullable local, WQMediaCopyDir *_Nullable dir, NSString *_Nullable error))
+{
+    dispatch_async(wq_io(), ^{
+        WQMediaCopyDir *dir = [WQMediaCopyDir new];
         NSString *error = nil;
-        BOOL ok = wq_copy_to_local(path, local, &error);
+        NSString *local = [dir.path stringByAppendingPathComponent:path.lastPathComponent];
+        BOOL ok = [NSFileManager.defaultManager createDirectoryAtPath:dir.path withIntermediateDirectories:YES
+                                                           attributes:@{NSFilePosixPermissions: @0700} error:nil];
+        if (ok) ok = wq_copy_to_local(path, local, &error);
+        else error = WQLocalized(@"The file could not be read.");
         wq_log(@"media: copy %@ -> %@", path.lastPathComponent, ok ? @"OK" : error);
         dispatch_async(dispatch_get_main_queue(), ^{
-            done(ok ? [NSURL fileURLWithPath:local] : nil, ok ? nil : (error ?: WQLocalized(@"The file could not be read.")));
+            done(ok ? [NSURL fileURLWithPath:local] : nil, dir, ok ? nil : (error ?: WQLocalized(@"The file could not be read.")));
         });
     });
 }
 
 // Plays audio and video. It streams the file through WQ Files (the media
 // process can't read other apps' folders itself), so playback starts at once
-// and seeking reads only what's needed. Types that can't stream that way, and
-// files whose stream fails, are copied to the temporary folder and played
-// from there.
+// and seeking reads only what's needed. Every range comes from one descriptor
+// opened here; if the file changes underneath, the stream fails and the file
+// is copied once instead. Types that can't stream that way, and files whose
+// stream fails, are copied to a temporary folder of their own and played from
+// there.
 static void wq_open_media(UINavigationController *nav, NSString *path, BOOL (^stillWanted)(void))
 {
     UIViewController *host = nav.topViewController;
     dispatch_async(wq_io(), ^{
-        struct stat st;
-        BOOL regular = wq_stat(path, &st) && S_ISREG(st.st_mode);
-        unsigned long long size = regular ? (unsigned long long)st.st_size : 0;
+        WQMediaFileReader *reader = [[WQMediaFileReader alloc] initWithDescriptor:wq_open_for_reading(path)];
+        BOOL regular = reader != nil;
+        unsigned long long size = reader.size;
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!stillWanted()) return;
             [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryPlayback error:nil];
             AVPlayerViewController *player = [AVPlayerViewController new];
             player.title = path.lastPathComponent;
             __weak AVPlayerViewController *weakPlayer = player;
-            // Fallback: copy, then swap the copy into the same player.
+            // Fallback: copy, then swap the copy into the same player. The
+            // player owns the copy's folder from then on.
             void (^playCopy)(NSString *) = ^(NSString *why) {
                 wq_log(@"media: %@: %@; copying it first", path.lastPathComponent, why);
                 AVPlayerViewController *p = weakPlayer;
@@ -585,14 +635,17 @@ static void wq_open_media(UINavigationController *nav, NSString *path, BOOL (^st
                 UIAlertController *hud = wq_alert_controller(@"Preparing…", path.lastPathComponent, UIAlertControllerStyleAlert);
                 UIViewController *presenter = p.viewIfLoaded.window ? p : host;
                 [presenter presentViewController:hud animated:YES completion:nil];
-                wq_media_copy(path, ^(NSURL *local, NSString *error) {
+                wq_media_copy(path, ^(NSURL *local, WQMediaCopyDir *dir, NSString *error) {
                     void (^finish)(void) = ^{
                         AVPlayerViewController *q = weakPlayer;
                         if (!local) {
                             wq_alert(q.viewIfLoaded.window ? q : host, @"Cannot play", error);
                             return;
                         }
+                        // No player any more: dir is released with this
+                        // block and removes the copy.
                         if (!q) return;
+                        wq_media_keep_copy_dir(q, dir);
                         [q.player replaceCurrentItemWithPlayerItem:[AVPlayerItem playerItemWithURL:local]];
                         [q.player play];
                     };
@@ -604,7 +657,7 @@ static void wq_open_media(UINavigationController *nav, NSString *path, BOOL (^st
             if (regular) {
                 item = [WQMediaStream playerItemForName:path.lastPathComponent size:size
                     read:^NSData *(unsigned long long offset, NSUInteger length, NSString **error) {
-                        return wq_read_range(path, offset, length, error);
+                        return [reader readOffset:offset length:length error:error];
                     } onFailure:^(NSString *reason) {
                         if (weakPlayer) playCopy([@"streaming failed: " stringByAppendingString:reason]);
                     }];
@@ -3732,6 +3785,9 @@ int main(int argc, char *argv[])
         wq_set_container_label_resolver(wq_bundle_id_for_container);
         wq_set_container_list_provider(wq_ls_container_paths);
         wq_set_full_scan_ui(wq_confirm_full_scan, wq_full_scan_progress);
+        // Temporary media copies and share exports left by earlier runs.
+        wq_media_sweep_stale();
+        wq_share_sweep_stale_exports();
         return UIApplicationMain(argc, argv, nil, NSStringFromClass(WQAppDelegate.class));
     }
 }
