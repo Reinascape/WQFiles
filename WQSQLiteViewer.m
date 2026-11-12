@@ -253,13 +253,14 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
 - (instancetype)initWithSnapshot:(WQSQLiteSnapshot *)snapshot table:(nullable NSString *)table rowidAlias:(nullable NSString *)alias
                            rowid:(long long)rowid columns:(NSArray<NSString *> *)columns values:(NSArray<NSString *> *)values
                            types:(NSArray<NSNumber *> *)types title:(NSString *)title;
-@property (nonatomic, copy, nullable) void (^onChange)(NSArray<NSString *> *values, NSArray<NSNumber *> *types);
+@property (nonatomic, copy, nullable) void (^onChange)(NSNumber *oldRowid, NSNumber *newRowid, NSArray<NSString *> *values, NSArray<NSNumber *> *types);
 @end
 
 @implementation WQSQLiteRowViewController {
     WQSQLiteSnapshot *_snapshot;
     NSString *_table, *_alias;
     long long _rowid;
+    BOOL _updating;
     NSArray<NSString *> *_columns;
     NSArray<NSString *> *_values;
     NSArray<NSNumber *> *_types;
@@ -282,7 +283,7 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
     return self;
 }
 
-- (BOOL)editable { return _snapshot.editing && _table && _alias; }
+- (BOOL)editable { return _snapshot.editing && _table && _alias && !_updating; }
 
 - (BOOL)wq_needsLeaveConfirmation { return NO; }
 - (void)confirmLeaveThen:(void (^)(void))proceed
@@ -347,6 +348,7 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
 // Writes one field of this row in the copy, then reads the row back.
 - (void)setColumn:(NSUInteger)column text:(nullable NSString *)text
 {
+    _updating = YES;
     WQSQLiteSnapshot *snapshot = _snapshot;
     NSString *table = wq_sqlite_quote_identifier(_table), *alias = _alias;
     NSString *name = _columns[column];
@@ -355,7 +357,8 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
     NSUInteger count = _columns.count;
     dispatch_async(snapshot.queue, ^{
         NSString *error = nil;
-        NSString *sql = [NSString stringWithFormat:@"UPDATE %@ SET %@ = ? WHERE %@ = ?", table, wq_sqlite_quote_identifier(name), alias];
+        NSString *sql = [NSString stringWithFormat:@"UPDATE %@ SET %@ = ? WHERE %@ = ? RETURNING %@", table, wq_sqlite_quote_identifier(name), alias, alias];
+        long long updatedRowid = rowid;
         sqlite3_stmt *stmt = NULL;
         if (sqlite3_prepare_v2(snapshot.db, sql.UTF8String, -1, &stmt, NULL) != SQLITE_OK) {
             error = @(sqlite3_errmsg(snapshot.db));
@@ -363,8 +366,13 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
             if (text) wq_sqlite_bind_typed(stmt, 1, text, previousType);
             else sqlite3_bind_null(stmt, 1);
             sqlite3_bind_int64(stmt, 2, rowid);
-            if (sqlite3_step(stmt) != SQLITE_DONE) error = @(sqlite3_errmsg(snapshot.db));
-            else if (sqlite3_changes(snapshot.db) != 1) error = WQLocalized(@"The row is gone.");
+            int rc = sqlite3_step(stmt);
+            if (rc == SQLITE_ROW) {
+                updatedRowid = sqlite3_column_int64(stmt, 0);
+                if (sqlite3_step(stmt) != SQLITE_DONE) error = @(sqlite3_errmsg(snapshot.db));
+            } else {
+                error = rc == SQLITE_DONE ? WQLocalized(@"The row is gone.") : @(sqlite3_errmsg(snapshot.db));
+            }
         }
         sqlite3_finalize(stmt);
         NSMutableArray *values = nil, *types = nil;
@@ -372,7 +380,7 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
             NSString *read = [NSString stringWithFormat:@"SELECT * FROM %@ WHERE %@ = ?", table, alias];
             stmt = NULL;
             if (sqlite3_prepare_v2(snapshot.db, read.UTF8String, -1, &stmt, NULL) == SQLITE_OK) {
-                sqlite3_bind_int64(stmt, 1, rowid);
+                sqlite3_bind_int64(stmt, 1, updatedRowid);
                 if (sqlite3_step(stmt) == SQLITE_ROW && (NSUInteger)sqlite3_column_count(stmt) == count) {
                     values = [NSMutableArray new];
                     types = [NSMutableArray new];
@@ -385,12 +393,14 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
             sqlite3_finalize(stmt);
         }
         dispatch_async(dispatch_get_main_queue(), ^{
+            self->_updating = NO;
             if (error) { wq_alert(self, @"Cannot change", error); return; }
+            self->_rowid = updatedRowid;
             [snapshot changed];
             if (values) {
                 self->_values = values;
                 self->_types = types;
-                if (self.onChange) self.onChange(values, types);
+                if (self.onChange) self.onChange(@(rowid), @(updatedRowid), values, types);
             }
             [self.tableView reloadData];
         });
@@ -614,12 +624,12 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
                    types:row < _types.count ? _types[row] : @[]
                    title:WQLocalizedFormat(@"Row %ld", (long)indexPath.row + 1)];
     __weak typeof(self) weakSelf = self;
-    NSNumber *rowid = hasRowid ? _rowids[row] : nil;
-    detail.onChange = ^(NSArray<NSString *> *values, NSArray<NSNumber *> *types) {
+    detail.onChange = ^(NSNumber *oldRowid, NSNumber *newRowid, NSArray<NSString *> *values, NSArray<NSNumber *> *types) {
         typeof(self) strongSelf = weakSelf;
-        if (!strongSelf || !rowid) return;
-        NSUInteger at = [strongSelf->_rowids indexOfObject:rowid];
+        if (!strongSelf) return;
+        NSUInteger at = [strongSelf->_rowids indexOfObject:oldRowid];
         if (at == NSNotFound) return;
+        strongSelf->_rowids[at] = newRowid;
         strongSelf->_rows[at] = values;
         strongSelf->_types[at] = types;
         strongSelf->_generation = strongSelf->_snapshot.generation;
