@@ -873,3 +873,7 @@
 "%lu files were deleted (copies are in Backups), then:\n%@" = "%lu files were deleted (copies are in Backups), then:\n%@";
 "%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files.";
 "Crash Logs can't be fully measured on this device." = "Crash Logs can't be fully measured on this device.";
+"Restore returns a file to its original location. Delete Backup removes the selected copy. Older copies may still be available." = "Restore returns a file to its original location. Delete Backup removes the selected copy. Older copies may still be available.";
+"Delete Backups…" = "Delete Backups…";
+"This removes the selected backup of %@. Older copies may still be available." = "This removes the selected backup of %@. Older copies may still be available.";
+"This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available.";

@@ -873,3 +873,7 @@
 "%lu files were deleted (copies are in Backups), then:\n%@" = "%lu개 파일을 삭제했습니다(사본은 백업에 있음). 그다음:\n%@";
 "%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "앱 및 확장 프로그램 %lu개 확인: 캐시와 임시 파일이 64KB 이상인 항목이 없습니다.";
 "Crash Logs can't be fully measured on this device." = "이 기기에서는 충돌 로그를 완전히 측정할 수 없습니다.";
+"Restore returns a file to its original location. Delete Backup removes the selected copy. Older copies may still be available." = "복원하면 파일이 원래 위치로 돌아갑니다. 백업 삭제는 선택한 사본을 제거합니다. 이전 사본은 남아 있을 수 있습니다.";
+"Delete Backups…" = "백업 삭제…";
+"This removes the selected backup of %@. Older copies may still be available." = "%@의 선택한 백업을 삭제합니다. 이전 사본은 남아 있을 수 있습니다.";
+"This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "선택한 백업의 다른 파일을 포함해 백업된 파일 %lu개를 삭제합니다. 이전 사본은 남아 있을 수 있습니다.";

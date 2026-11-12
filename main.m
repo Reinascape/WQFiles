@@ -2724,7 +2724,7 @@ static NSString *wq_deleted_place(NSString *original)
 - (void)updateButtons
 {
     if (!_items.count || !wq_deleting_allowed()) { self.navigationItem.rightBarButtonItem = nil; return; }
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WQLocalizedNullable(@"Delete All")
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WQLocalizedNullable(@"Delete Backups…")
         style:UIBarButtonItemStylePlain target:self action:@selector(confirmDeleteAll)];
     self.navigationItem.rightBarButtonItem.tintColor = UIColor.systemRedColor;
 }
@@ -2736,7 +2736,7 @@ static NSString *wq_deleted_place(NSString *original)
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section
 {
-    return WQLocalized(@"Files WQ Files deleted, from their copies in Backups. Restore puts a file back where it was (missing folders are created); Delete Permanently removes it from Backups. Long-press for all options.");
+    return WQLocalized(@"Restore returns a file to its original location. Delete Backup removes the selected copy. Older copies may still be available.");
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
@@ -2817,7 +2817,7 @@ static NSString *wq_deleted_place(NSString *original)
                            identifier:nil handler:^(UIAction *__unused a) { UIPasteboard.generalPasteboard.string = item.originalPath; }],
             nil];
         if (wq_deleting_allowed()) {
-            UIAction *del = [UIAction actionWithTitle:WQLocalizedNullable(@"Delete Permanently") image:[UIImage systemImageNamed:@"trash"]
+            UIAction *del = [UIAction actionWithTitle:WQLocalizedNullable(@"Delete Backup…") image:[UIImage systemImageNamed:@"trash"]
                                            identifier:nil handler:^(UIAction *__unused a) { [weakSelf confirmDelete:@[item]]; }];
             del.attributes = UIMenuElementAttributesDestructive;
             [actions addObject:del];
@@ -2855,9 +2855,9 @@ static NSString *wq_deleted_place(NSString *original)
     NSUInteger files = 0;
     for (WQDeletedItem *item in items) if (![units containsObject:item.unitPath]) { [units addObject:item.unitPath]; files += item.unitFileCount; }
     NSString *message = items.count == 1 && files == 1
-        ? WQLocalizedFormat(@"%@ is removed from Backups and can't be restored anymore.", items.firstObject.originalPath.lastPathComponent)
-        : WQLocalizedFormat(@"%lu backed-up files are removed from Backups (including files deleted or overwritten at the same time) and can't be restored anymore.", (unsigned long)files);
-    UIAlertController *alert = wq_alert_controller(@"Delete Permanently?", message, UIAlertControllerStyleAlert);
+        ? WQLocalizedFormat(@"This removes the selected backup of %@. Older copies may still be available.", items.firstObject.originalPath.lastPathComponent)
+        : WQLocalizedFormat(@"This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available.", (unsigned long)files);
+    UIAlertController *alert = wq_alert_controller(@"Delete backup?", message, UIAlertControllerStyleAlert);
     [alert addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
     [alert addAction:wq_alert_action(@"Delete", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
         NSArray *paths = units.array;

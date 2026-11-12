@@ -873,3 +873,7 @@
 "%lu files were deleted (copies are in Backups), then:\n%@" = "Se eliminaron %lu archivos (las copias están en Copias de seguridad); después:\n%@";
 "%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "%lu apps y extensiones revisadas: ninguna tiene 64 KB o más en cachés y archivos temporales.";
 "Crash Logs can't be fully measured on this device." = "Los registros de fallos no se pueden medir por completo en este dispositivo.";
+"Restore returns a file to its original location. Delete Backup removes the selected copy. Older copies may still be available." = "Restaurar devuelve el archivo a su ubicación original. Eliminar copia de seguridad elimina la copia seleccionada. Puede que haya copias anteriores disponibles.";
+"Delete Backups…" = "Eliminar copias de seguridad…";
+"This removes the selected backup of %@. Older copies may still be available." = "Se eliminará la copia de seguridad seleccionada de %@. Puede que haya copias anteriores disponibles.";
+"This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "Se eliminarán %lu archivos de las copias de seguridad, incluidos otros archivos de las copias seleccionadas. Puede que haya copias anteriores disponibles.";

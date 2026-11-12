@@ -873,3 +873,7 @@
 "%lu files were deleted (copies are in Backups), then:\n%@" = "已删除 %lu 个文件（副本在备份中），随后：\n%@";
 "%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "已检查 %lu 个应用和扩展：没有任何一个的缓存和临时文件达到 64 KB。";
 "Crash Logs can't be fully measured on this device." = "此设备上无法完整测量崩溃日志。";
+"Restore returns a file to its original location. Delete Backup removes the selected copy. Older copies may still be available." = "“还原”会将文件放回原始位置。“删除备份”会移除所选副本。较早的副本可能仍然可用。";
+"Delete Backups…" = "删除备份…";
+"This removes the selected backup of %@. Older copies may still be available." = "将删除 %@ 的所选备份。较早的副本可能仍然可用。";
+"This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "将删除 %lu 个已备份的文件，包括所选备份中的其他文件。较早的副本可能仍然可用。";

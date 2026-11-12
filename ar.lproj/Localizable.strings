@@ -869,3 +869,7 @@
 "%lu files were deleted (copies are in Backups), then:\n%@" = "حُذف %lu ملف (النسخ في النسخ الاحتياطية)، ثم:\n%@";
 "%lu apps and extensions checked: none has 64 KB or more in its caches and temporary files." = "تم فحص %lu من التطبيقات والإضافات: لا يحتوي أي منها على 64 كيلوبايت أو أكثر في ذاكرة التخزين المؤقت والملفات المؤقتة.";
 "Crash Logs can't be fully measured on this device." = "لا يمكن قياس سجلات الأعطال بالكامل على هذا الجهاز.";
+"Restore returns a file to its original location. Delete Backup removes the selected copy. Older copies may still be available." = "تعيد الاستعادة الملف إلى موقعه الأصلي. يحذف خيار حذف النسخة الاحتياطية النسخة المحددة. قد تظل النسخ الأقدم متاحة.";
+"Delete Backups…" = "حذف النسخ الاحتياطية…";
+"This removes the selected backup of %@. Older copies may still be available." = "سيُحذف الاحتياطي المحدد للملف %@. قد تظل النسخ الأقدم متاحة.";
+"This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "عدد الملفات التي ستُحذف من النسخ الاحتياطية: %lu، بما فيها ملفات أخرى في النسخ المحددة. قد تظل النسخ الأقدم متاحة.";
