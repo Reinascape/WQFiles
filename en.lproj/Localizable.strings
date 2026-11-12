@@ -877,3 +877,5 @@
 "Delete Backups…" = "Delete Backups…";
 "This removes the selected backup of %@. Older copies may still be available." = "This removes the selected backup of %@. Older copies may still be available.";
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available.";
+"Items not moved: %lu of %lu.\n\n%@" = "Items not moved: %lu of %lu.\n\n%@";
+"Items not deleted: %lu of %lu.\n\n%@" = "Items not deleted: %lu of %lu.\n\n%@";

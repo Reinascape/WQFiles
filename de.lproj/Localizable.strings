@@ -873,3 +873,5 @@
 "Delete Backups…" = "Backups löschen…";
 "This removes the selected backup of %@. Older copies may still be available." = "Das ausgewählte Backup von %@ wird gelöscht. Ältere Kopien können weiterhin verfügbar sein.";
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "Gesicherte Dateien, die gelöscht werden: %lu. Dazu gehören auch andere Dateien in den ausgewählten Backups. Ältere Kopien können weiterhin verfügbar sein.";
+"Items not moved: %lu of %lu.\n\n%@" = "Nicht verschoben: %lu von %lu.\n\n%@";
+"Items not deleted: %lu of %lu.\n\n%@" = "Nicht gelöscht: %lu von %lu.\n\n%@";

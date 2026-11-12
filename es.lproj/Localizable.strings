@@ -877,3 +877,5 @@
 "Delete Backups…" = "Eliminar copias de seguridad…";
 "This removes the selected backup of %@. Older copies may still be available." = "Se eliminará la copia de seguridad seleccionada de %@. Puede que haya copias anteriores disponibles.";
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "Se eliminarán %lu archivos de las copias de seguridad, incluidos otros archivos de las copias seleccionadas. Puede que haya copias anteriores disponibles.";
+"Items not moved: %lu of %lu.\n\n%@" = "Elementos sin mover: %lu de %lu.\n\n%@";
+"Items not deleted: %lu of %lu.\n\n%@" = "Elementos sin eliminar: %lu de %lu.\n\n%@";

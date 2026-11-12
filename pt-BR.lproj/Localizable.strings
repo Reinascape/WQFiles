@@ -877,3 +877,5 @@
 "Delete Backups…" = "Apagar backups…";
 "This removes the selected backup of %@. Older copies may still be available." = "O backup selecionado de %@ será apagado. Cópias anteriores ainda podem estar disponíveis.";
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "Serão apagados %lu arquivos dos backups, incluindo outros arquivos nos backups selecionados. Cópias anteriores ainda podem estar disponíveis.";
+"Items not moved: %lu of %lu.\n\n%@" = "Itens não movidos: %lu de %lu.\n\n%@";
+"Items not deleted: %lu of %lu.\n\n%@" = "Itens não apagados: %lu de %lu.\n\n%@";

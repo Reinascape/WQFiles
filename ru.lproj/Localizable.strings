@@ -877,3 +877,5 @@
 "Delete Backups…" = "Удалить резервные копии…";
 "This removes the selected backup of %@. Older copies may still be available." = "Выбранная резервная копия файла %@ будет удалена. Более ранние копии могут остаться доступными.";
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "Будет удалено файлов из резервных копий: %lu. Сюда входят другие файлы из выбранных копий. Более ранние копии могут остаться доступными.";
+"Items not moved: %lu of %lu.\n\n%@" = "Не перемещено: %lu из %lu.\n\n%@";
+"Items not deleted: %lu of %lu.\n\n%@" = "Не удалено: %lu из %lu.\n\n%@";

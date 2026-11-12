@@ -1381,7 +1381,7 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         }
         if (failed && error) {
             *error = paths.count == 1 ? first
-                : [NSString stringWithFormat:@"%lu of %lu items weren't moved.\n\n%@", (unsigned long)failed, (unsigned long)paths.count, first];
+                : WQLocalizedFormat(@"Items not moved: %lu of %lu.\n\n%@", (unsigned long)failed, (unsigned long)paths.count, first);
         }
         return failed == 0;
     } failure:WQLocalizedNullable(@"Cannot move")];
@@ -1416,7 +1416,7 @@ static NSString *wq_temp_work_dir(NSString *prefix)
             }
             if (failed && error) {
                 *error = paths.count == 1 ? first
-                    : [NSString stringWithFormat:@"%lu of %lu items weren't deleted.\n\n%@", (unsigned long)failed, (unsigned long)paths.count, first];
+                    : WQLocalizedFormat(@"Items not deleted: %lu of %lu.\n\n%@", (unsigned long)failed, (unsigned long)paths.count, first);
             }
             return failed == 0;
         } failure:WQLocalizedNullable(@"Cannot delete")];

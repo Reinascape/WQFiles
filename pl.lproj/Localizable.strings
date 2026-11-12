@@ -877,3 +877,5 @@
 "Delete Backups…" = "Usuń kopie zapasowe…";
 "This removes the selected backup of %@. Older copies may still be available." = "Wybrana kopia zapasowa pliku %@ zostanie usunięta. Starsze kopie mogą nadal być dostępne.";
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "Liczba usuwanych plików: %lu. Obejmuje także inne pliki w wybranych kopiach zapasowych. Starsze kopie mogą nadal być dostępne.";
+"Items not moved: %lu of %lu.\n\n%@" = "Nie przeniesiono: %lu z %lu.\n\n%@";
+"Items not deleted: %lu of %lu.\n\n%@" = "Nie usunięto: %lu z %lu.\n\n%@";

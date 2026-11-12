@@ -877,3 +877,5 @@
 "Delete Backups…" = "백업 삭제…";
 "This removes the selected backup of %@. Older copies may still be available." = "%@의 선택한 백업을 삭제합니다. 이전 사본은 남아 있을 수 있습니다.";
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "선택한 백업의 다른 파일을 포함해 백업된 파일 %lu개를 삭제합니다. 이전 사본은 남아 있을 수 있습니다.";
+"Items not moved: %lu of %lu.\n\n%@" = "이동하지 못한 항목: %lu / %lu.\n\n%@";
+"Items not deleted: %lu of %lu.\n\n%@" = "삭제하지 못한 항목: %lu / %lu.\n\n%@";

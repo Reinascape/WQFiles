@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRY = re.compile(r'^("(?:\\.|[^"\\])*")\s*=\s*("(?:\\.|[^"\\])*");$')
-PLACEHOLDER = re.compile(r'%(?:\d+\$)?(?:lld|llu|lu|ld|[dio@a-zA-Z])')
+PLACEHOLDER = re.compile(r"%(?:\d+\$)?[-+ #0']*(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:hh|ll|[hljztLq])?[@diuoxXfFeEgGaAcCsSpn%]")
 
 
 def read_table(path: Path) -> dict[str, str]:

@@ -873,3 +873,5 @@
 "Delete Backups…" = "حذف النسخ الاحتياطية…";
 "This removes the selected backup of %@. Older copies may still be available." = "سيُحذف الاحتياطي المحدد للملف %@. قد تظل النسخ الأقدم متاحة.";
 "This removes %lu backed-up files, including other files in the selected backups. Older copies may still be available." = "عدد الملفات التي ستُحذف من النسخ الاحتياطية: %lu، بما فيها ملفات أخرى في النسخ المحددة. قد تظل النسخ الأقدم متاحة.";
+"Items not moved: %lu of %lu.\n\n%@" = "العناصر التي تعذّر نقلها: %lu من %lu.\n\n%@";
+"Items not deleted: %lu of %lu.\n\n%@" = "العناصر التي تعذّر حذفها: %lu من %lu.\n\n%@";
