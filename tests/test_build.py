@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import plistlib
 import stat
 import shutil
 import subprocess
@@ -19,6 +20,7 @@ if [ "$1" = "--sdk" ] && [ "$3" = "--show-sdk-path" ]; then
     exit 0
 fi
 if [ "$1" = "--sdk" ] && [ "$3" = "clang" ]; then
+    if [ -n "${FAKE_CLANG_ARGS:-}" ]; then printf '%s\n' "$@" > "$FAKE_CLANG_ARGS"; fi
     output=
     previous=
     for argument in "$@"; do
@@ -187,6 +189,28 @@ class StagedBuildTests(unittest.TestCase):
                 self.assertFalse(marker.exists())
                 self.assertIn("preflight SKIPPED", result.stderr)
                 self.assertTrue((project / "WQFiles.ipa").is_file())
+
+    def test_compiles_for_the_info_plist_minimum_os(self):
+        # Executable policy check: the deployment target build.sh actually
+        # passes to clang must equal the documented 26.0 and Info.plist.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            final = root / "out" / "WQFiles.ipa"
+            final.parent.mkdir()
+            environment = self._fake_environment(root)
+            environment["WQFILES_FINAL_IPA"] = str(final)
+            environment["FAKE_CLANG_ARGS"] = str(root / "clang-args")
+            result = subprocess.run(
+                [str(BUILD)], cwd=ROOT, env=environment,
+                text=True, capture_output=True, check=False, timeout=120,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            arguments = (root / "clang-args").read_text(encoding="utf-8").splitlines()
+            with (ROOT / "Info.plist").open("rb") as plist_file:
+                minimum = plistlib.load(plist_file)["MinimumOSVersion"]
+            self.assertEqual(minimum, "26.0")
+            targets = [a for a in arguments if a.startswith("-miphoneos-version-min=")]
+            self.assertEqual(targets, ["-miphoneos-version-min=26.0"])
 
     def test_success_publishes_only_a_validated_zip(self):
         with tempfile.TemporaryDirectory() as directory:
