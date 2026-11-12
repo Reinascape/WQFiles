@@ -1326,8 +1326,11 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         UIBarButtonItem *del = [[UIBarButtonItem alloc] initWithTitle:WQLocalizedNullable(@"Delete") style:UIBarButtonItemStylePlain
                                                                target:self action:@selector(deleteSelectedFiles)];
         del.tintColor = UIColor.systemRedColor;
+        UIBarButtonItem *rename = [[UIBarButtonItem alloc] initWithTitle:WQLocalizedNullable(@"Rename") style:UIBarButtonItemStylePlain
+                                                                  target:self action:@selector(renameSelectedFile)];
         move.enabled = zip.enabled = del.enabled = any;
-        self.toolbarItems = wq_deleting_allowed() ? @[move, flex, zip, flex, del] : @[move, flex, zip];
+        rename.enabled = _selectedFiles.count == 1;   // issue #41
+        self.toolbarItems = wq_deleting_allowed() ? @[move, flex, rename, flex, zip, flex, del] : @[move, flex, rename, flex, zip];
     } else if (gWQMovePaths.count) {
         UIBarButtonItem *cancel = [[UIBarButtonItem alloc] initWithTitle:WQLocalizedNullable(@"Cancel") style:UIBarButtonItemStylePlain
                                                                   target:self action:@selector(cancelMove)];
@@ -2219,6 +2222,17 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+- (void)renameSelectedFile
+{
+    NSString *path = [self selectedFilePaths].firstObject;
+    if ([self selectedFilePaths].count != 1) return;
+    WQItem *item = nil;
+    for (WQItem *candidate in _all) if ([candidate.path isEqualToString:path]) { item = candidate; break; }
+    if (!item) return;
+    [self exitFileSelection];
+    [self promptRename:item];
+}
+
 - (void)promptRename:(WQItem *)item
 {
     UIAlertController *alert = wq_alert_controller(@"Rename", item.path, UIAlertControllerStyleAlert);
@@ -2452,23 +2466,66 @@ static NSString *wq_free_name_in(NSString *dir, NSString *name, NSMutableSet<NSS
     if (_importingFolder) { [self importFolders:urls]; return; }
     // One file: the existing flow, which offers to replace a file of the same name.
     if (urls.count == 1) { [self importSingleFile:urls.firstObject.path]; return; }
-    // Several files: same-named ones get a free name ("Name 2.ext") instead of
-    // a question per file. The picker's local copies are removed afterwards.
+    // Several files: when some names are taken, one question for all of them
+    // (issue #49): Replace All (each replaced file is backed up first, as for
+    // a single file) or Keep Both ("Name 2.ext").
     NSString *dir = _path;
     NSArray<NSString *> *sources = [urls valueForKey:@"path"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSUInteger taken = 0;
+        for (NSString *source in sources) {
+            struct stat st;
+            if (wq_stat([dir stringByAppendingPathComponent:source.lastPathComponent], &st) && S_ISREG(st.st_mode)) taken++;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!taken) { [self importFiles:sources into:dir replacing:NO]; return; }
+            UIAlertController *ask = wq_alert_controller(@"Replace existing files?",
+                WQLocalizedFormat(@"%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?",
+                                  (unsigned long)taken, (unsigned long)sources.count), UIAlertControllerStyleAlert);
+            [ask addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, ^(UIAlertAction *__unused a) {
+                for (NSString *source in sources) [NSFileManager.defaultManager removeItemAtPath:source error:nil];
+            })];
+            [ask addAction:wq_alert_action(@"Keep Both", UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) {
+                [self importFiles:sources into:dir replacing:NO];
+            })];
+            [ask addAction:wq_alert_action(@"Replace All", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
+                [self importFiles:sources into:dir replacing:YES];
+            })];
+            [self presentViewController:ask animated:YES completion:nil];
+        });
+    });
+}
+
+// The picker's local copies are removed afterwards. `replacing`: a regular
+// file of the same name is overwritten (backed up first); otherwise, and for
+// anything that isn't a regular file, the import gets a free name.
+- (void)importFiles:(NSArray<NSString *> *)sources into:(NSString *)dir replacing:(BOOL)replacing
+{
     [self runBusy:WQLocalized(@"Importing") failure:WQLocalizedNullable(@"Import failed") work:^BOOL(NSString **error, NSString **note) {
         NSMutableSet<NSString *> *claimed = [NSMutableSet new];
-        NSUInteger done = 0, renamed = 0;
+        NSUInteger done = 0, renamed = 0, replaced = 0;
         NSString *first = nil;
         for (NSString *source in sources) {
-            NSString *name = wq_free_name_in(dir, source.lastPathComponent, claimed);
             NSString *e = nil;
-            BOOL ok = name && wq_create_file_from([dir stringByAppendingPathComponent:name], source, &e);
+            NSString *existing = [dir stringByAppendingPathComponent:source.lastPathComponent];
+            struct stat st;
+            BOOL ok;
+            NSString *name = source.lastPathComponent;
+            if (replacing && ![claimed containsObject:name.lowercaseString] && wq_stat(existing, &st) && S_ISREG(st.st_mode)) {
+                ok = wq_write_from_file(existing, source, &e);
+                [claimed addObject:name.lowercaseString];
+                if (ok) replaced++;
+            } else {
+                name = wq_free_name_in(dir, source.lastPathComponent, claimed);
+                ok = name && wq_create_file_from([dir stringByAppendingPathComponent:name], source, &e);
+                if (ok && ![name isEqualToString:source.lastPathComponent]) renamed++;
+            }
             [NSFileManager.defaultManager removeItemAtPath:source error:nil];
-            if (ok) { done++; if (![name isEqualToString:source.lastPathComponent]) renamed++; }
+            if (ok) done++;
             else if (!first) first = [NSString stringWithFormat:@"%@: %@", source.lastPathComponent, e ?: @"no free name"];
         }
-        wq_log(@"import: %lu of %lu files into %@", (unsigned long)done, (unsigned long)sources.count, dir);
+        wq_log(@"import: %lu of %lu files into %@ (%lu replaced, %lu renamed)", (unsigned long)done, (unsigned long)sources.count,
+               dir, (unsigned long)replaced, (unsigned long)renamed);
         if (done < sources.count) {
             *error = [NSString stringWithFormat:@"%lu of %lu files were imported.\n\n%@",
                       (unsigned long)done, (unsigned long)sources.count, first];

@@ -902,3 +902,7 @@
 "Backup was edited" = "La copia fue modificada";
 "The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "Los archivos en %@ de esta copia cambiaron después de que WQ Files la creara, por ejemplo porque se pusieron archivos de otra copia. ¿Restaurar la copia tal como está ahora? Los datos actuales de la app se guardan antes igualmente.";
 "Restore Anyway" = "Restaurar de todos modos";
+"Replace existing files?" = "¿Reemplazar los archivos existentes?";
+"%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu de los %lu archivos ya existen aquí. ¿Reemplazarlos (cada uno se guarda antes) o conservar ambos?";
+"Keep Both" = "Conservar ambos";
+"Replace All" = "Reemplazar todos";

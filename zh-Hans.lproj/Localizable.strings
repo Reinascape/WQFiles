@@ -902,3 +902,7 @@
 "Backup was edited" = "备份已被修改";
 "The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "此备份中 %@ 的文件在 WQ Files 创建后发生了变化，例如放入了另一个备份中的文件。要按现在的状态恢复此备份吗？应用的当前数据仍会先备份。";
 "Restore Anyway" = "仍然恢复";
+"Replace existing files?" = "替换现有文件？";
+"%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu 个文件（共 %lu 个）已存在于此。要替换它们（每个都会先备份）还是两者都保留？";
+"Keep Both" = "两者都保留";
+"Replace All" = "全部替换";

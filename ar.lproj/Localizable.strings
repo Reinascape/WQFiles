@@ -898,3 +898,7 @@
 "Backup was edited" = "تم تعديل النسخة الاحتياطية";
 "The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "تغيرت الملفات في %@ من هذه النسخة بعد أن أنشأها WQ Files، مثلاً لأنه وُضعت فيها ملفات من نسخة احتياطية أخرى. هل تريد استعادة النسخة كما هي الآن؟ لا تزال بيانات التطبيق الحالية تُنسخ احتياطياً أولاً.";
 "Restore Anyway" = "استعادة على أي حال";
+"Replace existing files?" = "استبدال الملفات الموجودة؟";
+"%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu من أصل %lu ملف موجودة هنا بالفعل. هل تريد استبدالها (يُنسخ كل منها احتياطياً أولاً) أم الاحتفاظ بالاثنين؟";
+"Keep Both" = "الاحتفاظ بالاثنين";
+"Replace All" = "استبدال الكل";

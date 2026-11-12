@@ -902,3 +902,7 @@
 "Backup was edited" = "Yedek değiştirildi";
 "The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "Bu yedeğin %@ bölümündeki dosyalar WQ Files yedeği oluşturduktan sonra değişti; örneğin başka bir yedekten dosyalar eklendi. Yedek şu anki hâliyle geri yüklensin mi? Uygulamanın mevcut verileri yine önce yedeklenir.";
 "Restore Anyway" = "Yine de Geri Yükle";
+"Replace existing files?" = "Mevcut dosyalar değiştirilsin mi?";
+"%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu / %lu dosya burada zaten var. Değiştirilsin mi (her biri önce yedeklenir) yoksa ikisi de saklansın mı?";
+"Keep Both" = "İkisini de Sakla";
+"Replace All" = "Tümünü Değiştir";

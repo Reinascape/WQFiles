@@ -902,3 +902,7 @@
 "Backup was edited" = "Резервная копия изменена";
 "The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "Файлы в %@ этой копии изменились после того, как WQ Files её создал, например потому что в неё положили файлы из другой копии. Восстановить копию в текущем виде? Текущие данные приложения всё равно сначала сохраняются.";
 "Restore Anyway" = "Всё равно восстановить";
+"Replace existing files?" = "Заменить существующие файлы?";
+"%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu из %lu файлов уже есть здесь. Заменить их (каждый сначала сохраняется в резервной копии) или оставить оба?";
+"Keep Both" = "Оставить оба";
+"Replace All" = "Заменить все";

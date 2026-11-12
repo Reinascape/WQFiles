@@ -902,3 +902,7 @@
 "Backup was edited" = "Backup was edited";
 "The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first.";
 "Restore Anyway" = "Restore Anyway";
+"Replace existing files?" = "Replace existing files?";
+"%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?";
+"Keep Both" = "Keep Both";
+"Replace All" = "Replace All";
