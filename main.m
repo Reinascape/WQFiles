@@ -3022,6 +3022,45 @@ static NSString *wq_language_name(NSString *code)
     return name.length ? [[name substringToIndex:1].uppercaseString stringByAppendingString:[name substringFromIndex:1]] : code;
 }
 
+// A flag for each shipped language, drawn as an image so the names line up.
+// Languages are spoken in many countries; the flag is the usual pick for
+// language menus (English: UK, Arabic: Saudi Arabia, Portuguese: Brazil as
+// shipped). System Default gets a globe.
+static UIImage *wq_language_flag(NSString *code)
+{
+    if (!code.length) {
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightRegular];
+        return [UIImage systemImageNamed:@"globe" withConfiguration:cfg];
+    }
+    static NSDictionary<NSString *, NSString *> *regions;
+    static NSCache *images;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        regions = @{ @"en": @"GB", @"de": @"DE", @"it": @"IT", @"es": @"ES", @"pt-BR": @"BR", @"pl": @"PL",
+                     @"ru": @"RU", @"ko": @"KR", @"zh-Hans": @"CN", @"ar": @"SA", @"tr": @"TR" };
+        images = [NSCache new];
+    });
+    NSString *region = regions[code];
+    if (!region) region = [[NSLocale localeWithLocaleIdentifier:code] objectForKey:NSLocaleCountryCode];
+    if (region.length != 2) return nil;
+    UIImage *cached = [images objectForKey:region];
+    if (cached) return cached;
+    // Regional indicator symbols: A = U+1F1E6.
+    NSMutableString *flag = [NSMutableString new];
+    for (NSUInteger i = 0; i < 2; i++) {
+        UTF32Char scalar = 0x1F1E6 + ([region.uppercaseString characterAtIndex:i] - 'A');
+        UTF32Char be = NSSwapHostIntToBig(scalar);
+        [flag appendString:[[NSString alloc] initWithBytes:&be length:4 encoding:NSUTF32BigEndianStringEncoding]];
+    }
+    NSDictionary *attrs = @{ NSFontAttributeName: [UIFont systemFontOfSize:24] };
+    CGSize size = [flag sizeWithAttributes:attrs];
+    UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithSize:size] imageWithActions:^(UIGraphicsImageRendererContext *__unused ctx) {
+        [flag drawAtPoint:CGPointZero withAttributes:attrs];
+    }];
+    [images setObject:image forKey:region];
+    return image;
+}
+
 // iOS only offers Settings → WQ Files → Language when the device has more
 // than one preferred language, so WQ Files has its own list, built from the
 // languages the app ships. The choice is this app's AppleLanguages default,
@@ -3076,6 +3115,9 @@ static NSString *wq_language_name(NSString *code)
     UIListContentConfiguration *c = [UIListContentConfiguration subtitleCellConfiguration];
     NSString *code = indexPath.section == 0 ? @"" : _codes[(NSUInteger)indexPath.row];
     c.text = wq_language_name(code);
+    c.image = wq_language_flag(code);
+    c.imageProperties.reservedLayoutSize = CGSizeMake(34, 0);
+    if (!code.length) c.imageProperties.tintColor = UIColor.secondaryLabelColor;
     // Like iOS: each language in its own name, and in the one shown now.
     NSString *shownLanguage = NSBundle.mainBundle.preferredLocalizations.firstObject ?: @"en";
     if (code.length) {

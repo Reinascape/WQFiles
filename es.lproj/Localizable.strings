@@ -899,3 +899,6 @@
 "Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "No se pudieron leer algunas carpetas o elementos, así que estos totales pueden estar incompletos. Todo lo que contengan que no sea un archivo normal se elimina sin copia de seguridad.";
 "Backups could not be read: %@" = "No se pudieron leer las copias de seguridad: %@";
 "Some backups could not be read, so this list may be incomplete." = "No se pudieron leer algunas copias de seguridad, así que esta lista puede estar incompleta.";
+"Backup was edited" = "La copia fue modificada";
+"The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "Los archivos en %@ de esta copia cambiaron después de que WQ Files la creara, por ejemplo porque se pusieron archivos de otra copia. ¿Restaurar la copia tal como está ahora? Los datos actuales de la app se guardan antes igualmente.";
+"Restore Anyway" = "Restaurar de todos modos";

@@ -899,3 +899,6 @@
 "Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "部分文件夹或项目无法读取，因此这些总数可能不完整。其中不是普通文件的内容会在没有备份的情况下删除。";
 "Backups could not be read: %@" = "无法读取备份：%@";
 "Some backups could not be read, so this list may be incomplete." = "部分备份无法读取，因此此列表可能不完整。";
+"Backup was edited" = "备份已被修改";
+"The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "此备份中 %@ 的文件在 WQ Files 创建后发生了变化，例如放入了另一个备份中的文件。要按现在的状态恢复此备份吗？应用的当前数据仍会先备份。";
+"Restore Anyway" = "仍然恢复";

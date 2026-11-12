@@ -899,3 +899,6 @@
 "Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup.";
 "Backups could not be read: %@" = "Backups could not be read: %@";
 "Some backups could not be read, so this list may be incomplete." = "Some backups could not be read, so this list may be incomplete.";
+"Backup was edited" = "Backup was edited";
+"The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first.";
+"Restore Anyway" = "Restore Anyway";

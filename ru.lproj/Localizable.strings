@@ -899,3 +899,6 @@
 "Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "Некоторые папки или объекты не удалось прочитать, поэтому итоги могут быть неполными. Всё, что в них не является обычным файлом, удаляется без резервной копии.";
 "Backups could not be read: %@" = "Не удалось прочитать резервные копии: %@";
 "Some backups could not be read, so this list may be incomplete." = "Некоторые резервные копии не удалось прочитать, поэтому список может быть неполным.";
+"Backup was edited" = "Резервная копия изменена";
+"The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "Файлы в %@ этой копии изменились после того, как WQ Files её создал, например потому что в неё положили файлы из другой копии. Восстановить копию в текущем виде? Текущие данные приложения всё равно сначала сохраняются.";
+"Restore Anyway" = "Всё равно восстановить";

@@ -1316,8 +1316,38 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
     [alert addAction:wq_alert_action(WQLocalized(@"Restore"), UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
         [self setBusy:YES status:WQLocalizedFormat(@"Restoring %@…", app.name)];
         dispatch_async(wq_io(), ^{
+            // A backup whose files were swapped (e.g. from another backup
+            // tool) no longer matches its manifest: ask before using it.
+            NSString *checkError = nil;
+            NSDictionary *edited = [backup[@"verified"] boolValue] ? wq_backup_edited_parts(path, app.bundleID, &checkError) : @{};
+            if (edited.count) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self setBusy:NO status:nil];
+                    [self confirmEditedRestore:app from:path edited:edited];
+                });
+                return;
+            }
             NSString *title = nil, *message = nil;
             [self restore:app from:path title:&title message:&message];
+            dispatch_async(dispatch_get_main_queue(), ^{ [self finish:title message:message]; });
+        });
+    })];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)confirmEditedRestore:(WQAppItem *)app from:(NSString *)path edited:(NSDictionary<NSString *, NSString *> *)edited
+{
+    NSString *parts = [[edited.allKeys sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@", "];
+    wq_log(@"restore %@: backup %@ was edited after it was made (%@)", app.bundleID, path.lastPathComponent, parts);
+    UIAlertController *alert = wq_alert_controller(@"Backup was edited",
+        WQLocalizedFormat(@"The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first.", parts),
+        UIAlertControllerStyleAlert);
+    [alert addAction:wq_alert_action(WQLocalized(@"Cancel"), UIAlertActionStyleCancel, nil)];
+    [alert addAction:wq_alert_action(WQLocalized(@"Restore Anyway"), UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
+        [self setBusy:YES status:WQLocalizedFormat(@"Restoring %@…", app.name)];
+        dispatch_async(wq_io(), ^{
+            NSString *title = nil, *message = nil;
+            [self restore:app from:path accepting:edited title:&title message:&message];
             dispatch_async(dispatch_get_main_queue(), ^{ [self finish:title message:message]; });
         });
     })];
@@ -1454,13 +1484,18 @@ static BOOL wq_finish_restore_journal(NSString **error)
     return wq_remove_restore_journal(error);
 }
 
-static BOOL wq_validate_backup_hashes(NSString *backup, NSArray<NSString *> *parts,
-                                      NSDictionary *manifest, NSString **error)
+// `accepted` (optional): part -> content hash the user confirmed for a backup
+// that was edited after it was made (files swapped in from another backup).
+// The backup must still match what was confirmed, so nothing changes unseen
+// between the confirmation and the restore.
+static BOOL wq_validate_backup_hashes_accepting(NSString *backup, NSArray<NSString *> *parts,
+                                                NSDictionary *manifest, NSDictionary<NSString *, NSString *> *accepted,
+                                                NSString **error)
 {
     NSDictionary *hashes = manifest[@"PartHashes"];
     if (!hashes) return YES;   // backups made before content hashes existed
     for (NSString *part in parts) {
-        NSString *expected = hashes[part];
+        NSString *expected = accepted[part] ?: hashes[part];
         if (![expected isKindOfClass:NSString.class] || !expected.length) {
             if (error) *error = WQLocalizedFormat(@"The backup has no hash for %@", part);
             return NO;
@@ -1474,6 +1509,31 @@ static BOOL wq_validate_backup_hashes(NSString *backup, NSArray<NSString *> *par
         }
     }
     return YES;
+}
+
+static BOOL wq_validate_backup_hashes(NSString *backup, NSArray<NSString *> *parts,
+                                      NSDictionary *manifest, NSString **error)
+{
+    return wq_validate_backup_hashes_accepting(backup, parts, manifest, nil, error);
+}
+
+// Parts whose contents differ from the manifest (part -> current hash), or
+// nil with an error. Empty when the backup is as it was made.
+static NSDictionary<NSString *, NSString *> *wq_backup_edited_parts(NSString *backup, NSString *bundleID, NSString **error)
+{
+    NSArray<NSString *> *parts = nil;
+    NSDictionary *manifest = nil;
+    if (!wq_validate_backup(backup, bundleID, YES, &parts, &manifest, NULL, error)) return nil;
+    NSDictionary *hashes = manifest[@"PartHashes"];
+    NSMutableDictionary *edited = [NSMutableDictionary new];
+    if (![hashes isKindOfClass:NSDictionary.class]) return edited;
+    for (NSString *part in parts) {
+        BOOL exists = NO;
+        NSString *actual = WQAppsSupportTreeContentSignature([backup stringByAppendingPathComponent:part], &exists, error);
+        if (!actual || !exists) return nil;
+        if (![actual isEqual:hashes[part]]) edited[part] = actual;
+    }
+    return edited;
 }
 
 static BOOL wq_rollback_safety(NSString *container, NSString *bundleID, NSString *safety,
@@ -1575,6 +1635,12 @@ NSString *wq_recover_interrupted_restore(void)
 
 - (void)restore:(WQAppItem *)app from:(NSString *)backup title:(NSString **)title message:(NSString **)message
 {
+    [self restore:app from:backup accepting:nil title:title message:message];
+}
+
+- (void)restore:(WQAppItem *)app from:(NSString *)backup accepting:(NSDictionary<NSString *, NSString *> *)accepted
+          title:(NSString **)title message:(NSString **)message
+{
     // 1. Validate all typed manifest fields and all required parts before any
     // safety backup, journal, purge, or replacement is allowed.
     NSArray<NSString *> *parts = nil;
@@ -1620,7 +1686,7 @@ NSString *wq_recover_interrupted_restore(void)
     if (!wq_validate_container(app.container, app.bundleID, app.containerDevice, app.containerInode, &error) ||
         !wq_validate_backup(backup, app.bundleID, YES, &preRestoreParts, &preRestoreManifest, NULL, &error) ||
         ![preRestoreParts isEqualToArray:parts] ||
-        !wq_validate_backup_hashes(backup, preRestoreParts, preRestoreManifest, &error)) {
+        !wq_validate_backup_hashes_accepting(backup, preRestoreParts, preRestoreManifest, accepted, &error)) {
         error = error ?: WQLocalized(@"The selected backup changed before restore");
     }
     BOOL ok = error == nil;

@@ -895,3 +895,6 @@
 "Some folders or items could not be read, so these totals may be incomplete. Anything in them that is not a regular file is removed without a backup." = "تعذرت قراءة بعض المجلدات أو العناصر، لذا قد تكون هذه المجاميع غير مكتملة. كل ما بداخلها وليس ملفًا عاديًا يُزال دون نسخة احتياطية.";
 "Backups could not be read: %@" = "تعذرت قراءة النسخ الاحتياطية: %@";
 "Some backups could not be read, so this list may be incomplete." = "تعذرت قراءة بعض النسخ الاحتياطية، لذا قد تكون هذه القائمة غير مكتملة.";
+"Backup was edited" = "تم تعديل النسخة الاحتياطية";
+"The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "تغيرت الملفات في %@ من هذه النسخة بعد أن أنشأها WQ Files، مثلاً لأنه وُضعت فيها ملفات من نسخة احتياطية أخرى. هل تريد استعادة النسخة كما هي الآن؟ لا تزال بيانات التطبيق الحالية تُنسخ احتياطياً أولاً.";
+"Restore Anyway" = "استعادة على أي حال";
