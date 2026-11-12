@@ -1024,7 +1024,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
             : app.hasAccess
             ? WQLocalized(@"The container identifier is unavailable. Backup, restore and clear are disabled for this entry.")
             : WQLocalized(@"Sandbox access is unavailable. Check the App Group and see Log; only the container path can be copied.");
-        UIAlertController *sheet = wq_alert_controller(app.name, [NSString stringWithFormat:@"%@\n\n%@", app.container, why], UIAlertControllerStyleActionSheet);
+        UIAlertController *sheet = wq_alert_controller(WQVerbatim(app.name), WQVerbatim([NSString stringWithFormat:@"%@\n\n%@", app.container, why]), UIAlertControllerStyleActionSheet);
         if (app.hasAccess) {
             [sheet addAction:wq_alert_action(WQLocalized(@"Open Data Folder"), UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) {
                 [self.navigationController pushViewController:[[WQDirViewController alloc] initWithPath:app.container title:app.name] animated:YES];
@@ -1040,7 +1040,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         [self presentViewController:sheet animated:YES completion:nil];
         return;
     }
-    UIAlertController *sheet = wq_alert_controller(app.name, [NSString stringWithFormat:@"%@\n%@", app.bundleID,
+    UIAlertController *sheet = wq_alert_controller(WQVerbatim(app.name), [NSString stringWithFormat:@"%@\n%@", app.bundleID,
                  app.sizeKnown ? WQLocalizedFormat(@"%@ of data", wq_size_text(app.bytes)) : WQLocalized(@"size unavailable")], UIAlertControllerStyleActionSheet);
     [sheet addAction:wq_alert_action(WQLocalized(@"Back Up Data"), UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) {
         [self backUp:app then:nil];
@@ -1293,7 +1293,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
 {
     NSArray *backups = app.backups;
     if (backups.count == 1) { [self confirmRestore:app from:backups.firstObject]; return; }
-    UIAlertController *sheet = wq_alert_controller(WQLocalized(@"Restore which backup?"), app.name, UIAlertControllerStyleActionSheet);
+    UIAlertController *sheet = wq_alert_controller(WQLocalized(@"Restore which backup?"), WQVerbatim(app.name), UIAlertControllerStyleActionSheet);
     for (NSDictionary *__unused b in backups) {
         [sheet addAction:wq_alert_action(wq_backup_label(b), UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) { [self confirmRestore:app from:b]; })];
     }

@@ -938,12 +938,20 @@ NSArray<NSString *> *wq_ls_bundle_containers(void)
     }
 }
 
+// Apple's apps are named in WQ Files' language (the tables hold "Weather",
+// "Stocks"…); every other app keeps its name exactly, even when it happens to
+// match a UI key such as "Files" or "Delete" (review CR-31).
+static NSString *wq_present_name(NSString *bundleID, NSString *name)
+{
+    return [bundleID hasPrefix:@"com.apple."] ? WQVerbatim(WQLocalized(name)) : WQVerbatim(name);
+}
+
 NSString *wq_display_name(NSString *bundleID)
 {
     if (!bundleID) return nil;
     @synchronized (wq_ls_lock()) {
         NSString *name = wq_known_name_locked(bundleID);
-        if (name) return WQLocalized(name);
+        if (name) return wq_present_name(bundleID, name);
         // Unknown id: use the closest parent app (com.apple.news.widget -> News).
         NSArray *parts = [bundleID componentsSeparatedByString:@"."];
         for (NSInteger n = (NSInteger)parts.count - 1; n >= 2; n--) {
@@ -951,8 +959,8 @@ NSString *wq_display_name(NSString *bundleID)
             NSString *parent = wq_known_name_locked(prefix);
             if (parent) {
                 NSString *suffix = wq_safe_name(parts.lastObject);
-                NSString *display = suffix.length ? [NSString stringWithFormat:@"%@ \u2013 %@", parent, suffix] : parent;
-                return WQLocalized(display);
+                NSString *shown = wq_present_name(prefix, parent);
+                return WQVerbatim(suffix.length ? [NSString stringWithFormat:@"%@ \u2013 %@", shown, suffix] : shown);
             }
         }
         return nil;

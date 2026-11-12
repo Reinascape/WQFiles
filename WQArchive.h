@@ -32,6 +32,11 @@ NS_ASSUME_NONNULL_BEGIN
 // container needs this.
 @property (nonatomic) BOOL skipUnreadable;
 @property (nonatomic) NSUInteger unreadable;
+// Unreadable files with these names are left out too but counted in
+// `expectedUnreadable` instead: every app container holds a root-only
+// .com.apple.mobile_container_manager.metadata.plist, which isn't worth a prompt.
+@property (nonatomic, copy, nullable) NSSet<NSString *> *expectedUnreadableNames;
+@property (nonatomic) NSUInteger expectedUnreadable;
 @end
 
 // Plain POSIX calls; for local files and tests.

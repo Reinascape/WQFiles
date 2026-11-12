@@ -218,13 +218,14 @@ void wq_share_folder(UIViewController *host, NSString *dir, NSString *zipName, U
         io.list = ^NSArray<NSString *> *(NSString *path) { return wq_list(path, NULL); };
         io.openRead = ^int(NSString *path) { return wq_open_for_reading(path); };
         io.skipUnreadable = YES;
+        io.expectedUnreadableNames = [NSSet setWithObject:@".com.apple.mobile_container_manager.metadata.plist"];
         NSUInteger skipped = 0;
         NSString *zipError = nil;
         BOOL ok = zip && !preparation.isCancelled &&
             wq_zip_write(@[dir], zip, io, ^BOOL { return preparation.isCancelled; }, nil, &skipped, &zipError);
         NSString *why = zipError ?: @"Could not create the ZIP";
-        wq_log(@"share zip: %@ -> %@ %@ (%lu unreadable, %lu links or special files left out)", dir, zip.lastPathComponent,
-               ok ? @"OK" : why, (unsigned long)io.unreadable, (unsigned long)skipped);
+        wq_log(@"share zip: %@ -> %@ %@ (%lu unreadable, %lu container metadata, %lu links or special files left out)", dir,
+               zip.lastPathComponent, ok ? @"OK" : why, (unsigned long)io.unreadable, (unsigned long)io.expectedUnreadable, (unsigned long)skipped);
         NSUInteger unreadable = io.unreadable;
         dispatch_async(dispatch_get_main_queue(), ^{
             UIViewController *strongHost = preparation.host;

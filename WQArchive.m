@@ -173,7 +173,11 @@ static BOOL wq_zip_local_header(WQZipWriter *w, WQZipEntry *e)
 static BOOL wq_zip_add_file(WQZipWriter *w, NSString *path, NSString *name, const struct stat *st)
 {
     int in = w->io.openRead(path);
-    if (in < 0 && w->io.skipUnreadable && (errno == EACCES || errno == EPERM)) { w->io.unreadable++; return YES; }
+    if (in < 0 && w->io.skipUnreadable && (errno == EACCES || errno == EPERM)) {
+        if ([w->io.expectedUnreadableNames containsObject:path.lastPathComponent]) w->io.expectedUnreadable++;
+        else w->io.unreadable++;
+        return YES;
+    }
     if (in < 0) return wq_zip_fail(w, WQLocalizedFormat(@"Can't read %@ (%s)", name, strerror(errno)));
     WQZipEntry *e = [WQZipEntry new];
     e.name = [name dataUsingEncoding:NSUTF8StringEncoding];

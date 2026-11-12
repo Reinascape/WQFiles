@@ -283,7 +283,7 @@ static void wq_sqlite_bind_typed(sqlite3_stmt *stmt, int index, NSString *text, 
         return;
     }
     NSString *name = _columns[column];
-    UIAlertController *alert = wq_alert_controller(name, nil, UIAlertControllerStyleAlert);
+    UIAlertController *alert = wq_alert_controller(WQVerbatim(name), nil, UIAlertControllerStyleAlert);
     NSString *current = type == SQLITE_NULL ? @"" : _values[column];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *f) {
         f.text = current;
