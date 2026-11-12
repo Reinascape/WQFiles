@@ -194,6 +194,39 @@ static void TestContainerMapping(NSString *path)
     WQCheck([wq_display_name(@"com.example.app") isEqualToString:@"AppName8"]);
 }
 
+// iOS 27.3 (issue #50): app records as on 27.2 (0x25c: +0x0c id, +0x6c
+// container, +0x70 name, +0x78 display name), plugin records 0x134 bytes
+// with +0x00 id and +0x58 container.
+static NSData *Store27_3(void)
+{
+    NSMutableData *data = [NSMutableData dataWithLength:0x3000];
+    memcpy(data.mutableBytes, "bdsl", 4);
+    const NSUInteger bundle = 0x200, plugin = 0x500;
+    Put32(data, bundle + 4, 0x25c);
+    Put32(data, bundle + 8 + 0x0c, 1u << 2);
+    Put32(data, bundle + 8 + 0x6c, 2u << 2);
+    Put32(data, bundle + 8 + 0x70, 3u << 2);
+    Put32(data, bundle + 8 + 0x78, 3u << 2);
+    Put32(data, plugin + 4, 0x134);
+    Put32(data, plugin + 8 + 0x00, 4u << 2);
+    Put32(data, plugin + 8 + 0x58, 5u << 2);
+    PutString(data, 0x1000, 1, @"com.example.app");
+    PutString(data, 0x1080, 2, kAppPath);
+    PutString(data, 0x1100, 3, @"Name27.3");
+    PutString(data, 0x1180, 4, @"com.example.app.ext273");
+    PutString(data, 0x1200, 5, kPluginPath);
+    return data;
+}
+
+static void Test27_3Layout(NSString *path)
+{
+    WriteData(Store27_3(), path);
+    [NSUserDefaults.standardUserDefaults setObject:path forKey:@"WQLaunchServicesStore"];
+    WQCheck([wq_bundle_id_for_container(kAppPath) isEqualToString:@"com.example.app"]);
+    WQCheck([wq_bundle_id_for_container(kPluginPath) isEqualToString:@"com.example.app.ext273"]);
+    WQCheck([wq_display_name(@"com.example.app") isEqualToString:@"Name27.3"]);
+}
+
 static void TestOversizedStoreFailsClosed(NSString *path)
 {
     int fd = open(path.fileSystemRepresentation, O_WRONLY | O_CREAT | O_TRUNC, 0600);
@@ -290,6 +323,7 @@ int main(void)
             TestLayoutDiagnosticsBudget();
 #endif
             TestContainerMapping(path);
+            Test27_3Layout(path);
             TestOversizedStoreFailsClosed(path);
         } @finally {
             [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
