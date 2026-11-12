@@ -2409,6 +2409,32 @@ static BOOL wq_sync_entry(int parent, NSString *name)
     return ok;
 }
 
+// Sockets, FIFOs and device files can't be copied (NSFileManager fails the
+// whole tree with "couldn't be copied", ENOTSUP) and hold no data: apps leave
+// sockets in tmp and Library. They show as 0 KB files (issue #48). The copy
+// leaves them out; every other error still stops it.
+@interface WQSkipSpecialFiles : NSObject <NSFileManagerDelegate>
+@property (nonatomic) NSUInteger skipped;
+@end
+
+static BOOL wq_is_special_file(NSString *path)
+{
+    struct stat st;
+    if (lstat(path.fileSystemRepresentation, &st) != 0) return NO;
+    return S_ISSOCK(st.st_mode) || S_ISFIFO(st.st_mode) || S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode);
+}
+
+@implementation WQSkipSpecialFiles
+- (BOOL)fileManager:(NSFileManager *)fm shouldProceedAfterError:(NSError *)error
+  copyingItemAtPath:(NSString *)src toPath:(NSString *)dst
+{
+    (void)fm; (void)error; (void)dst;
+    if (!wq_is_special_file(src)) return NO;
+    self.skipped++;
+    return YES;
+}
+@end
+
 BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString **errorText)
 {
     srcDir = WQCanonicalVarPath(srcDir);
@@ -2418,7 +2444,9 @@ BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString **errorText)
         if (errorText) *errorText = WQLocalized(@"Source and destination trees overlap or have invalid paths");
         return NO;
     }
-    NSFileManager *fm = NSFileManager.defaultManager;
+    NSFileManager *fm = [NSFileManager new];
+    WQSkipSpecialFiles *skipper = [WQSkipSpecialFiles new];
+    fm.delegate = skipper;
     int source = wq_open_directory(srcDir);
     if (source < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
     int destination = WQCreateDirectoriesNoLinksMode(dstDir, 0755);
@@ -2443,6 +2471,7 @@ BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString **errorText)
         }
         NSString *src = [srcDir stringByAppendingPathComponent:name];
         NSString *dst = [dstDir stringByAppendingPathComponent:name];
+        if (wq_is_special_file(src)) { skipper.skipped++; continue; }
         NSString *stageName = [@".wq-copy-stage-" stringByAppendingString:NSUUID.UUID.UUIDString];
         NSString *stagePath = [dstDir stringByAppendingPathComponent:stageName];
         if (mkdirat(destination, stageName.fileSystemRepresentation, 0700) != 0) {
@@ -2491,7 +2520,8 @@ BOOL wq_copy_contents(NSString *srcDir, NSString *dstDir, NSString **errorText)
     }
     close(source); close(destination);
     if (errorText && !allOk) *errorText = firstFailure;
-    wq_log(@"copy: %@ -> %@ (%lu items) %@", srcDir, dstDir, (unsigned long)children.count, allOk ? @"OK" : @"with errors");
+    wq_log(@"copy: %@ -> %@ (%lu items) %@%@", srcDir, dstDir, (unsigned long)children.count, allOk ? @"OK" : @"with errors",
+           skipper.skipped ? [NSString stringWithFormat:@"; %lu sockets or pipes left out", (unsigned long)skipper.skipped] : @"");
     return allOk;
 }
 
