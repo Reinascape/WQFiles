@@ -350,15 +350,19 @@ static BOOL wq_validate_container(NSString *container, NSString *bundleID, dev_t
     return YES;
 }
 
-static BOOL wq_copy_part_and_verify(NSString *src, NSString *dst, NSString **error)
+// Sockets, FIFOs and device files are not copied and not compared (see
+// WQAppsSupportTreeSignatureOmitting); *omitted gets how many were left out.
+static BOOL wq_copy_part_and_verify(NSString *src, NSString *dst, NSUInteger *omitted, NSString **error)
 {
+    if (omitted) *omitted = 0;
     BOOL sourceBeforeExists = NO;
     NSString *sourceBefore = WQAppsSupportTreeSignature(src, YES, &sourceBeforeExists, error);
     if (!sourceBefore) return NO;
     if (!wq_copy_contents(src, dst, error)) return NO;
     BOOL srcExists = NO, dstExists = NO;
     NSString *sourceAfter = WQAppsSupportTreeSignature(src, YES, &srcExists, error);
-    NSString *sourceShape = WQAppsSupportTreeSignature(src, NO, NULL, error);
+    NSUInteger sourceOmitted = 0;
+    NSString *sourceShape = WQAppsSupportTreeSignatureOmitting(src, NO, NULL, &sourceOmitted, error);
     NSString *destinationShape = WQAppsSupportTreeSignature(dst, NO, &dstExists, error);
     if (!sourceAfter || !sourceShape || !destinationShape || !sourceBeforeExists || !srcExists || !dstExists ||
         ![sourceBefore isEqualToString:sourceAfter] ||
@@ -366,6 +370,8 @@ static BOOL wq_copy_part_and_verify(NSString *src, NSString *dst, NSString **err
         if (error && !*error) *error = WQLocalized(@"The copied tree could not be verified (the source changed or the copy is incomplete)");
         return NO;
     }
+    if (sourceOmitted) wq_log(@"copy %@: %lu sockets, pipes or device files left out", src, (unsigned long)sourceOmitted);
+    if (omitted) *omitted = sourceOmitted;
     return YES;
 }
 
@@ -396,7 +402,10 @@ static BOOL wq_purge_and_verify(NSString *dir, unsigned long long *freed, NSStri
 // Copies Documents and Library from `container` (an app's data container,
 // or for imports a local folder) into a new verified backup of bundleID.
 // `stillValid` (optional) re-checks the source before and after publishing.
+// `extraManifest` (optional) adds entries to the manifest (e.g. an import's
+// confirmed identity conflict).
 static NSString *wq_make_backup_from(NSString *bundleID, NSString *container, NSString *reason,
+                                     NSDictionary *extraManifest,
                                      BOOL (^stillValid)(NSString **error), NSString **error)
 {
     if (!WQAppsSupportBundleIDValid(bundleID)) {
@@ -423,6 +432,7 @@ static NSString *wq_make_backup_from(NSString *bundleID, NSString *container, NS
     NSMutableArray *parts = [NSMutableArray new];
     NSMutableDictionary<NSString *, NSString *> *sourceStates = [NSMutableDictionary new];
     NSMutableDictionary<NSString *, NSString *> *partHashes = [NSMutableDictionary new];
+    NSMutableDictionary<NSString *, NSNumber *> *omittedSpecial = [NSMutableDictionary new];
     BOOL ok = YES;
     for (NSString *part in kAppBackupParts()) {
         NSString *src = [container stringByAppendingPathComponent:part];
@@ -434,7 +444,9 @@ static NSString *wq_make_backup_from(NSString *bundleID, NSString *container, NS
         if (!sourceState) { ok = NO; break; }
         sourceStates[part] = sourceState;
         NSString *stagedPart = [staging stringByAppendingPathComponent:part];
-        if (!wq_copy_part_and_verify(src, stagedPart, error)) { ok = NO; break; }
+        NSUInteger omitted = 0;
+        if (!wq_copy_part_and_verify(src, stagedPart, &omitted, error)) { ok = NO; break; }
+        if (omitted) omittedSpecial[part] = @(omitted);
         BOOL stagedExists = NO;
         NSString *contentHash = WQAppsSupportTreeContentSignature(stagedPart, &stagedExists, error);
         if (!contentHash || !stagedExists) {
@@ -469,10 +481,13 @@ static NSString *wq_make_backup_from(NSString *bundleID, NSString *container, NS
         sequence = n;
         final = [root stringByAppendingPathComponent:[NSString stringWithFormat:@"%@ (%lu)", stamp, (unsigned long)n]];
     }
-    NSDictionary *manifest = @{ @"Complete": @YES, @"BundleID": bundleID, @"Created": created,
-                                @"Parts": parts, @"PartHashes": partHashes,
-                                @"Reason": reason ?: @"", @"Format": @1,
-                                @"Sequence": @(sequence) };
+    NSMutableDictionary *manifest = [NSMutableDictionary dictionaryWithDictionary:extraManifest ?: @{}];
+    [manifest addEntriesFromDictionary:@{ @"Complete": @YES, @"BundleID": bundleID, @"Created": created,
+                                          @"Parts": parts, @"PartHashes": partHashes,
+                                          @"Reason": reason ?: @"", @"Format": @1,
+                                          @"Sequence": @(sequence) }];
+    // Sockets, pipes and device files hold no data and are never copied.
+    if (omittedSpecial.count) manifest[@"OmittedSpecialFiles"] = omittedSpecial;
     if (ok && ![manifest writeToFile:[staging stringByAppendingPathComponent:kBackupManifest] atomically:YES]) {
         ok = NO;
         if (error) *error = WQLocalized(@"Cannot write the backup manifest");
@@ -511,7 +526,7 @@ static NSString *const kBackupReasonImported = @"Imported";
 static NSString *wq_make_app_backup(NSString *bundleID, NSString *container, dev_t expectedDevice,
                                     ino_t expectedInode, NSString *reason, NSString **error)
 {
-    return wq_make_backup_from(bundleID, container, reason, ^BOOL(NSString **validationError) {
+    return wq_make_backup_from(bundleID, container, reason, nil, ^BOOL(NSString **validationError) {
         return wq_validate_container(container, bundleID, expectedDevice, expectedInode, validationError);
     }, error);
 }
@@ -1088,7 +1103,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
 {
     WQAppItem *app = _importApp;
     _importApp = nil;
-    if (app && urls.firstObject) [self importBackupFrom:urls.firstObject for:app confirmedOwner:NO];
+    if (app && urls.firstObject) [self importBackupFrom:urls.firstObject for:app confirmedDeclarations:nil];
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller
@@ -1096,13 +1111,16 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
     _importApp = nil;
 }
 
-- (void)importBackupFrom:(NSURL *)url for:(WQAppItem *)app confirmedOwner:(BOOL)confirmed
+// `confirmed`: the declared bundle IDs the user already agreed to import
+// anyway; the import asks again if the data now declares anything else.
+- (void)importBackupFrom:(NSURL *)url for:(WQAppItem *)app confirmedDeclarations:(NSArray<NSString *> *)confirmed
 {
     [self setBusy:YES status:WQLocalizedFormat(@"Importing a backup of %@…", app.name)];
     NSString *bundleID = app.bundleID;
     dispatch_async(wq_io(), ^{
         BOOL scoped = [url startAccessingSecurityScopedResource];
-        __block NSString *error = nil, *dest = nil, *declared = nil;
+        __block NSString *error = nil, *dest = nil;
+        __block NSArray<NSString *> *declared = @[];
         __block NSArray *ignored = @[];
         NSString *work = [NSTemporaryDirectory() stringByAppendingPathComponent:
                           [@"wq-import-" stringByAppendingString:NSUUID.UUID.UUIDString]];
@@ -1131,26 +1149,40 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
             }
             NSString *root = WQAppsSupportImportRoot(source, &error);
             if (!root) return;
-            declared = WQAppsSupportImportDeclaredBundle(root);
-            if (declared.length && ![declared isEqualToString:bundleID] && !confirmed) return;   // ask first
+            // Every identity declaration counts: a manifest naming this app
+            // must not hide container metadata naming another one.
+            NSString *invalid = nil;
+            declared = WQAppsSupportImportDeclaredBundles(root, &invalid);
+            if (invalid) {
+                error = WQLocalizedFormat(@"The data names an invalid app identifier (%@).", invalid);
+                return;
+            }
+            BOOL foreign = declared.count > 1 || (declared.count == 1 && ![declared.firstObject isEqualToString:bundleID]);
+            if (foreign && ![[NSSet setWithArray:confirmed ?: @[]] isEqualToSet:[NSSet setWithArray:declared]]) return;   // ask first
             ignored = WQAppsSupportImportIgnored(root);
-            dest = wq_make_backup_from(bundleID, root, kBackupReasonImported, nil, &error);
+            NSDictionary *extra = foreign ? @{ @"ImportDeclaredBundleIDs": declared } : nil;
+            dest = wq_make_backup_from(bundleID, root, kBackupReasonImported, extra, nil, &error);
         }];
         if (coordinationError && !error && !dest) error = coordinationError.localizedDescription;
         if (scoped) [url stopAccessingSecurityScopedResource];
         [fm removeItemAtPath:work error:nil];
-        wq_log(@"import backup %@ from %@: %@%@", bundleID, url.lastPathComponent,
+        wq_log(@"import backup %@ from %@ (declares %@): %@%@", bundleID, url.lastPathComponent,
+               declared.count ? [declared componentsJoinedByString:@", "] : @"nothing",
                dest ? dest.lastPathComponent : (error ?: @"needs confirmation"),
                ignored.count ? [NSString stringWithFormat:@" (left out: %@)", [ignored componentsJoinedByString:@", "]] : @"");
         dispatch_async(dispatch_get_main_queue(), ^{
             [self setBusy:NO status:nil];
-            if (!dest && !error && declared.length) {
-                UIAlertController *ask = wq_alert_controller(@"Different app?",
-                    WQLocalizedFormat(@"This data says it belongs to %@, not %@ (%@). Importing it as a backup of %@ and restoring it can break the app.",
-                                      declared, app.name, bundleID, app.name), UIAlertControllerStyleAlert);
+            if (!dest && !error && declared.count) {
+                NSString *names = [declared componentsJoinedByString:@", "];
+                NSString *text = declared.count == 1
+                    ? WQLocalizedFormat(@"This data says it belongs to %@, not %@ (%@). Importing it as a backup of %@ and restoring it can break the app.",
+                                        names, app.name, bundleID, app.name)
+                    : WQLocalizedFormat(@"This data names more than one app (%@). Importing it as a backup of %@ (%@) and restoring it can break the app.",
+                                        names, app.name, bundleID);
+                UIAlertController *ask = wq_alert_controller(@"Different app?", text, UIAlertControllerStyleAlert);
                 [ask addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
                 [ask addAction:wq_alert_action(@"Import Anyway", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
-                    [self importBackupFrom:url for:app confirmedOwner:YES];
+                    [self importBackupFrom:url for:app confirmedDeclarations:declared];
                 })];
                 [self presentViewController:ask animated:YES completion:nil];
                 return;
@@ -1299,7 +1331,7 @@ static BOOL wq_replace_part(NSString *src, NSString *dst, NSString **error)
     // part disappears or becomes unreadable, no live data may be purged first.
     NSString *staging = [NSTemporaryDirectory() stringByAppendingPathComponent:
                          [NSString stringWithFormat:@"WQAppsRestore-%@", NSUUID.UUID.UUIDString]];
-    BOOL staged = wq_copy_part_and_verify(src, staging, error);
+    BOOL staged = wq_copy_part_and_verify(src, staging, NULL, error);
     if (!staged) {
         [NSFileManager.defaultManager removeItemAtPath:staging error:nil];
         return NO;
@@ -1307,7 +1339,7 @@ static BOOL wq_replace_part(NSString *src, NSString *dst, NSString **error)
     unsigned long long ignored = 0;
     BOOL ok = wq_purge_and_verify(dst, &ignored, error);
     if (ok) {
-        ok = wq_copy_part_and_verify(staging, dst, error);
+        ok = wq_copy_part_and_verify(staging, dst, NULL, error);
         if (!ok && error && !*error) *error = [NSString stringWithFormat:@"Could not restore %@", dst.lastPathComponent];
     }
     [NSFileManager.defaultManager removeItemAtPath:staging error:nil];

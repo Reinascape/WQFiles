@@ -89,6 +89,11 @@ int main(void)
             WQCheck([fm fileExistsAtPath:[specialDst stringByAppendingPathComponent:@"tmp/empty.dat"]]);
             WQCheck(![fm fileExistsAtPath:[specialDst stringByAppendingPathComponent:@"tmp/pipe"]]);
             WQCheck(![fm fileExistsAtPath:[specialDst stringByAppendingPathComponent:@"toplevel-pipe"]]);
+            // CR-07: the app-backup verification sees the same supported tree on both sides.
+            NSUInteger omitted = 0;
+            NSString *specialShape = WQAppsSupportTreeSignatureOmitting(specialSrc, NO, &exists, &omitted, &error);
+            NSString *copiedShape = WQAppsSupportTreeSignature(specialDst, NO, &exists, &error);
+            WQCheck(specialShape && [specialShape isEqualToString:copiedShape] && omitted == 2);
 
             // A copy failure must not leave a published destination.
             NSString *missing = [base stringByAppendingPathComponent:@"missing"];
