@@ -75,8 +75,15 @@ new files.
     together. **Move** works across apps: pick the items, open the target
     folder in any app's data, tap **Move Here**. Existing items are never
     replaced.
+  - **Duplicate**, **Copy to Folder…** (works across apps, like Move) and
+    **Get Info** (size, dates, owner, permissions, inode and a file's SHA-256;
+    tap a row to copy it) are in the long-press menu.
+  - The ••• menu has **Search Inside Folders…** (names in all subfolders),
+    **Largest Files** (the 100 biggest files below the folder) and **Add to
+    Favorites**; favorites are listed under Tools. With **Reopen Last
+    Folder** on (Settings), WQ Files starts in the folder you were in.
   - **Compress** creates a ZIP next to the items; **Extract** (long-press a
-    .zip) unpacks it into a new folder. Entries that would land outside that
+    .zip, or tap it and choose **Extract and Open**) unpacks it into a new folder. Entries that would land outside that
     folder, encrypted ZIPs and symbolic links are refused or left out.
   - **Plist editor**: browse dictionaries and arrays, edit values by type
     (switches for booleans, numbers, text, dates, data as hex), add, delete,
@@ -113,6 +120,13 @@ new files.
 - **Keep Data Before Restore** (start screen, on by default): restoring an app
   backup or a file backup first backs up what's there now, so a failed restore
   can be undone. Turn it off to delete that backup once the restore succeeded.
+- **Reopen Last Folder** (start screen, on by default): WQ Files starts in the
+  folder you were in, once the startup check has passed.
+- **Check for Updates** (start screen, on by default): at most twice a day WQ
+  Files downloads the public `source.json` from this repository and shows a
+  note on the start screen when a newer version is out. This is its only
+  network access; nothing about the device or its data is sent. Turn it off to
+  keep WQ Files fully offline.
 
 App names come from LaunchServices' own database, read from lsd's container
 (the LaunchServices API itself refuses this app on 27.x). Apple services that
