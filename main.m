@@ -827,6 +827,31 @@ static NSString *wq_index_letter(NSString *name)
     return (c >= 'A' && c <= 'Z') ? [NSString stringWithCharacters:&c length:1] : @"#";
 }
 
+static NSString *const kWQFavorites = @"WQFavorites";
+
+static NSArray<NSDictionary *> *wq_favorites(void)
+{
+    return [NSUserDefaults.standardUserDefaults arrayForKey:kWQFavorites] ?: @[];
+}
+
+static NSUInteger wq_favorite_index(NSArray<NSDictionary *> *favorites, NSString *path)
+{
+    return [favorites indexOfObjectPassingTest:^BOOL(NSDictionary *entry, NSUInteger __unused index, BOOL *__unused stop) {
+        return [entry[@"path"] isEqualToString:path];
+    }];
+}
+
+static void wq_set_favorite(NSString *path, NSString *title, BOOL readOnly, BOOL add)
+{
+    NSMutableArray *favorites = [wq_favorites() mutableCopy];
+    NSUInteger index = wq_favorite_index(favorites, path);
+    if (add && index == NSNotFound)
+        [favorites addObject:@{@"path": path, @"title": title ?: path, @"readOnly": @(readOnly)}];
+    else if (!add && index != NSNotFound)
+        [favorites removeObjectAtIndex:index];
+    [NSUserDefaults.standardUserDefaults setObject:favorites forKey:kWQFavorites];
+}
+
 // Items picked with Move, waiting for "Move Here" in another folder, with the
 // identity (device, inode, type) each had when picked, or NSNull if unknown.
 static NSArray<NSString *> *gWQMovePaths;
@@ -944,6 +969,19 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     }
     [menuItems addObject:[UIAction actionWithTitle:WQLocalizedNullable(@"Copy Path") image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil
                           handler:^(UIAction *__unused a) { UIPasteboard.generalPasteboard.string = path; }]];
+    [menuItems addObject:[UIDeferredMenuElement elementWithUncachedProvider:^(void (^completion)(NSArray<UIMenuElement *> *)) {
+        WQDirViewController *folder = weakSelf;
+        if (!folder) { completion(@[]); return; }
+        NSString *favoritePath = WQCanonicalVarPath(path);
+        BOOL saved = wq_favorite_index(wq_favorites(), favoritePath) != NSNotFound;
+        UIAction *favorite = [UIAction actionWithTitle:WQLocalized(saved ? @"Remove from Favorites" : @"Add to Favorites")
+                                                image:[UIImage systemImageNamed:saved ? @"star.slash" : @"star"] identifier:nil
+                                              handler:^(UIAction *__unused action) {
+            WQDirViewController *current = weakSelf;
+            if (current) wq_set_favorite(favoritePath, current->_baseTitle, current.readOnly, !saved);
+        }];
+        completion(@[favorite]);
+    }]];
     // Built when the menu opens, so the checkmarks show the current order.
     [menuItems addObject:[UIDeferredMenuElement elementWithUncachedProvider:^(void (^completion)(NSArray<UIMenuElement *> *)) {
         WQSortKey current = wq_sort_key();
@@ -3333,6 +3371,90 @@ static UIImage *wq_language_flag(NSString *code)
 
 @end
 
+@interface WQFavoritesViewController : UITableViewController
+@end
+
+@implementation WQFavoritesViewController {
+    NSArray<NSDictionary *> *_favorites;
+}
+
+- (instancetype)init
+{
+    return [super initWithStyle:UITableViewStyleInsetGrouped];
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    self.title = WQLocalized(@"Favorites");
+    [self reloadFavorites];
+}
+
+- (void)reloadFavorites
+{
+    _favorites = wq_favorites();
+    [self.tableView reloadData];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    return (NSInteger)_favorites.count;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section
+{
+    return _favorites.count ? nil : WQLocalized(@"Add a folder from its More menu.");
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    NSDictionary *favorite = _favorites[(NSUInteger)indexPath.row];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"favorite"]
+        ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"favorite"];
+    UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
+    content.text = favorite[@"title"];
+    content.secondaryText = favorite[@"path"];
+    content.image = [UIImage systemImageNamed:@"star"];
+    cell.contentConfiguration = content;
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    NSDictionary *favorite = _favorites[(NSUInteger)indexPath.row];
+    NSString *path = favorite[@"path"];
+    dispatch_async(wq_io(), ^{
+        struct stat st;
+        BOOL directory = wq_stat(path, &st) && S_ISDIR(st.st_mode);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.navigationController.topViewController != self) return;
+            if (!directory) { wq_alert(self, @"Not found", WQVerbatim(path)); return; }
+            WQDirViewController *folder = [[WQDirViewController alloc] initWithPath:path title:favorite[@"title"]];
+            folder.readOnly = [favorite[@"readOnly"] boolValue];
+            [self.navigationController pushViewController:folder animated:YES];
+        });
+    });
+}
+
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    NSString *path = _favorites[(NSUInteger)indexPath.row][@"path"];
+    UIContextualAction *remove = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal
+        title:WQLocalized(@"Remove from Favorites") handler:^(UIContextualAction *__unused action, UIView *__unused view, void (^completion)(BOOL)) {
+            wq_set_favorite(path, nil, NO, NO);
+            completion(YES);
+            [self reloadFavorites];
+        }];
+    remove.backgroundColor = UIColor.systemGrayColor;
+    UISwipeActionsConfiguration *config = [UISwipeActionsConfiguration configurationWithActions:@[remove]];
+    config.performsFirstActionWithFullSwipe = NO;
+    return config;
+}
+
+@end
+
 @implementation WQRootViewController {
     NSArray<NSArray<NSString *> *> *_locations;  // title, path, symbol
     // Kept between visits so Apps and the Cache Cleaner show their last list
@@ -3562,7 +3684,7 @@ static UIImage *wq_language_flag(NSString *code)
 {
     // System Groups is the extra last row, on iOS 27 only.
     if (section == 2) return 4;
-    return section == 0 ? (NSInteger)_locations.count + (wq_system_areas_reachable() ? 1 : 0) : 7;
+    return section == 0 ? (NSInteger)_locations.count + (wq_system_areas_reachable() ? 1 : 0) : 8;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section
@@ -3629,7 +3751,7 @@ static UIImage *wq_language_flag(NSString *code)
     } else {
         NSArray *tools = @[@[@"Apps", @"square.grid.3x3"], @[@"Cache Cleaner", @"trash"], @[@"Go to Path…", @"arrow.right.circle"],
                            @[@"App Backups", @"clock.arrow.circlepath"], @[@"Backups", @"clock.arrow.circlepath"],
-                           @[@"Recently Deleted", @"trash.circle"], @[@"Log", @"doc.plaintext"]];
+                           @[@"Recently Deleted", @"trash.circle"], @[@"Log", @"doc.plaintext"], @[@"Favorites", @"star"]];
         c.text = WQLocalizedNullable(tools[(NSUInteger)indexPath.row][0]);
         c.image = [UIImage systemImageNamed:tools[(NSUInteger)indexPath.row][1]];
     }
@@ -3671,6 +3793,8 @@ static UIImage *wq_language_flag(NSString *code)
         next = [[WQDirViewController alloc] initWithPath:wq_backup_root() title:WQLocalizedNullable(@"Backups")];
     } else if (indexPath.row == 5) {
         next = [WQRecentlyDeletedViewController new];
+    } else if (indexPath.row == 7) {
+        next = [WQFavoritesViewController new];
     } else {
         next = [WQLogViewController new];
     }

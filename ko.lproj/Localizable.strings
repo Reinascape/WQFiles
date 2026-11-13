@@ -913,3 +913,7 @@
 "Copy to Folder…" = "폴더로 복사…";
 "Copy Here" = "여기에 복사";
 "Open the destination folder, then tap Copy Here." = "대상 폴더를 열고 ‘여기에 복사’를 탭하세요.";
+"Favorites" = "즐겨찾기";
+"Add to Favorites" = "즐겨찾기에 추가";
+"Remove from Favorites" = "즐겨찾기에서 제거";
+"Add a folder from its More menu." = "폴더의 더 보기 메뉴에서 추가하세요.";

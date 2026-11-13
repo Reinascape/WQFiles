@@ -913,3 +913,7 @@
 "Copy to Folder…" = "คัดลอกไปยังโฟลเดอร์…";
 "Copy Here" = "คัดลอกที่นี่";
 "Open the destination folder, then tap Copy Here." = "เปิดโฟลเดอร์ปลายทาง แล้วแตะ “คัดลอกที่นี่”";
+"Favorites" = "รายการโปรด";
+"Add to Favorites" = "เพิ่มในรายการโปรด";
+"Remove from Favorites" = "นำออกจากรายการโปรด";
+"Add a folder from its More menu." = "เพิ่มโฟลเดอร์จากเมนูเพิ่มเติมของโฟลเดอร์นั้น";
