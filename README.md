@@ -92,8 +92,9 @@ new files.
     force-quit the app first (WQ Files can't tell whether it's running). Before
     writing, WQ Files checks the copy with SQLite's integrity check and refuses
     if the app changed the database since it was opened; the previous
-    database goes to Backups, and the app's old `-wal`/`-shm` are emptied so
-    SQLite doesn't replay them over the new file.
+    database goes to Backups. SQLite writes the edited database in a
+    transaction and handles its journal or WAL so the target app can recover
+    even if WQ Files is interrupted.
   - **Media player**: audio and video (mp3, m4a, wav, mp4, mov…) play in the
     system player. WQ Files streams the file to the player itself, so playback
     starts right away; formats that can't stream this way (or a stream that
