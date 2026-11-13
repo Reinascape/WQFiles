@@ -906,3 +906,6 @@
 "Open as File" = "فتح كملف";
 "Duplicate" = "إنشاء نسخة";
 "Duplicating…" = "جارٍ إنشاء نسخة…";
+"Copy to Folder…" = "نسخ إلى مجلد…";
+"Copy Here" = "نسخ هنا";
+"Open the destination folder, then tap Copy Here." = "افتح المجلد الوجهة، ثم اضغط على «نسخ هنا».";

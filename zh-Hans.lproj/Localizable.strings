@@ -910,3 +910,6 @@
 "Open as File" = "作为文件打开";
 "Duplicate" = "创建副本";
 "Duplicating…" = "正在创建副本…";
+"Copy to Folder…" = "复制到文件夹…";
+"Copy Here" = "复制到此处";
+"Open the destination folder, then tap Copy Here." = "打开目标文件夹，然后轻点“复制到此处”。";

@@ -910,3 +910,6 @@
 "Open as File" = "Открыть как файл";
 "Duplicate" = "Дублировать";
 "Duplicating…" = "Создание копии…";
+"Copy to Folder…" = "Копировать в папку…";
+"Copy Here" = "Копировать сюда";
+"Open the destination folder, then tap Copy Here." = "Откройте папку назначения и нажмите «Копировать сюда».";

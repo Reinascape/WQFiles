@@ -974,7 +974,7 @@ BOOL wq_create_file_from(NSString *path, NSString *source, NSString **errorText)
         if (errorText) *errorText = WQLocalized(@"Invalid file path");
         return NO;
     }
-    int in = WQOpenRegularAt(AT_FDCWD, source.fileSystemRepresentation, O_RDONLY, 0);
+    int in = wq_open(source, O_RDONLY, 0);
     if (in < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
     NSString *parentPath = path.stringByDeletingLastPathComponent;
     int parent = wq_open_directory_flags(parentPath, O_SEARCH);

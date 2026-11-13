@@ -910,3 +910,6 @@
 "Open as File" = "Abrir como Arquivo";
 "Duplicate" = "Duplicar";
 "Duplicating…" = "Duplicando…";
+"Copy to Folder…" = "Copiar para pasta…";
+"Copy Here" = "Copiar aqui";
+"Open the destination folder, then tap Copy Here." = "Abra a pasta de destino e toque em “Copiar aqui”.";

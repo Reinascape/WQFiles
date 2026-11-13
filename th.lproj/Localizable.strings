@@ -910,3 +910,6 @@
 "Open as File" = "เปิดเป็นไฟล์";
 "Duplicate" = "สร้างสำเนา";
 "Duplicating…" = "กำลังสร้างสำเนา…";
+"Copy to Folder…" = "คัดลอกไปยังโฟลเดอร์…";
+"Copy Here" = "คัดลอกที่นี่";
+"Open the destination folder, then tap Copy Here." = "เปิดโฟลเดอร์ปลายทาง แล้วแตะ “คัดลอกที่นี่”";

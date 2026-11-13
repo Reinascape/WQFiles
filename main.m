@@ -20,6 +20,7 @@
 #import "WQApps.h"
 #import "WQCache.h"
 #import "WQCore.h"
+#import "WQAccessSafety.h"
 #import "WQPlistEditor.h"
 #import "WQPlistEditorSupport.h"
 #import "WQHexViewer.h"
@@ -830,10 +831,12 @@ static NSString *wq_index_letter(NSString *name)
 // identity (device, inode, type) each had when picked, or NSNull if unknown.
 static NSArray<NSString *> *gWQMovePaths;
 static NSArray *gWQMoveIdentities;
+static BOOL gWQCopyPending;
 static NSString *const kWQMoveChanged = @"WQMoveChanged";
 
-static void wq_set_move_paths(NSArray<NSString *> *paths, NSArray *identities)
+static void wq_set_move_paths(NSArray<NSString *> *paths, NSArray *identities, BOOL copying)
 {
+    gWQCopyPending = paths.count > 0 && copying;
     gWQMovePaths = paths.count ? [paths copy] : nil;
     gWQMoveIdentities = paths.count && identities.count == paths.count ? [identities copy] : nil;
     [NSNotificationCenter.defaultCenter postNotificationName:kWQMoveChanged object:nil];
@@ -1306,9 +1309,11 @@ static NSString *wq_temp_work_dir(NSString *prefix)
 - (BOOL)canMoveHere
 {
     if (![self canEditHere] || _error || !gWQMovePaths.count) return NO;
+    NSString *destination = WQCanonicalVarPath(_path);
     for (NSString *path in gWQMovePaths) {
-        if ([path.stringByDeletingLastPathComponent isEqualToString:_path]) return NO;
-        if ([_path isEqualToString:path] || [_path hasPrefix:[path stringByAppendingString:@"/"]]) return NO;
+        NSString *source = WQCanonicalVarPath(path);
+        if ([source.stringByDeletingLastPathComponent isEqualToString:destination]) return NO;
+        if ([destination isEqualToString:source] || [destination hasPrefix:[source stringByAppendingString:@"/"]]) return NO;
     }
     return YES;
 }
@@ -1337,7 +1342,7 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         UILabel *label = [UILabel new];
         label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
         label.textColor = UIColor.secondaryLabelColor;
-        label.text = gWQMovePaths.count == 1
+        label.text = gWQCopyPending ? WQLocalized(@"Copy to Folder…") : gWQMovePaths.count == 1
             ? WQLocalizedFormat(@"Moving “%@”", gWQMovePaths.firstObject.lastPathComponent)
             : WQLocalizedFormat(@"Moving %lu items", (unsigned long)gWQMovePaths.count);
         label.lineBreakMode = NSLineBreakByTruncatingMiddle;
@@ -1346,8 +1351,8 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         frame.size.width = MIN(frame.size.width, 180);
         label.frame = frame;
         UIBarButtonItem *info = [[UIBarButtonItem alloc] initWithCustomView:label];
-        UIBarButtonItem *here = [[UIBarButtonItem alloc] initWithTitle:WQLocalizedNullable(@"Move Here") style:UIBarButtonItemStyleProminent
-                                                                target:self action:@selector(moveHere)];
+        UIBarButtonItem *here = [[UIBarButtonItem alloc] initWithTitle:WQLocalizedNullable(gWQCopyPending ? @"Copy Here" : @"Move Here") style:UIBarButtonItemStyleProminent
+                                                                target:self action:gWQCopyPending ? @selector(copyHere) : @selector(moveHere)];
         here.enabled = [self canMoveHere];
         self.toolbarItems = @[cancel, flex, info, flex, here];
     } else {
@@ -1432,14 +1437,40 @@ static NSString *wq_temp_work_dir(NSString *prefix)
 
 - (void)startMove:(NSArray<NSString *> *)paths identities:(NSArray *)identities
 {
-    wq_set_move_paths(paths, identities);
+    wq_set_move_paths(paths, identities, NO);
     wq_alert(self, paths.count == 1 ? WQLocalized(@"Move") : WQLocalizedFormat(@"Move %lu items", (unsigned long)paths.count),
              @"Open the folder you want to move to, then tap Move Here at the bottom. Any app's folder works.");
 }
 
+- (void)startCopy:(WQItem *)item
+{
+    if (!item.identity || item.isLink || !(item.isRegular || item.isDir)) return;
+    wq_set_move_paths(@[item.path], @[item.identity], YES);
+    wq_alert(self, @"Copy to Folder…", @"Open the destination folder, then tap Copy Here.");
+}
+
+- (void)copyHere
+{
+    if (!gWQCopyPending || ![self canMoveHere]) return;
+    NSString *source = gWQMovePaths.firstObject;
+    NSDictionary *identity = wq_identity_at(gWQMoveIdentities, 0);
+    NSString *destination = [_path stringByAppendingPathComponent:source.lastPathComponent];
+    wq_set_move_paths(nil, nil, NO);
+    [self runBusy:WQLocalized(@"Copy") failure:WQLocalized(@"Copying failed.")
+             work:^BOOL(NSString **error, NSString **__unused note) {
+        struct stat st;
+        if (!identity || !wq_stat(source, &st) || ![identity isEqualToDictionary:wq_identity_for_stat(&st)]) {
+            *error = WQLocalized(@"The item was moved, replaced or changed after it was selected. It was left as it is.");
+            return NO;
+        }
+        return S_ISDIR(st.st_mode) ? wq_copy_tree_new(source, destination, nil, error)
+                                  : wq_create_file_from(destination, source, error);
+    }];
+}
+
 - (void)cancelMove
 {
-    wq_set_move_paths(nil, nil);
+    wq_set_move_paths(nil, nil, NO);
 }
 
 - (void)moveHere
@@ -1448,7 +1479,7 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     NSArray *identities = gWQMoveIdentities;
     if (![self canMoveHere]) return;
     NSString *dest = _path;
-    wq_set_move_paths(nil, nil);
+    wq_set_move_paths(nil, nil, NO);
     [self runIO:^BOOL(NSString **error) {
         NSUInteger failed = 0;
         NSString *first = nil;
@@ -2208,6 +2239,13 @@ static NSString *wq_temp_work_dir(NSString *prefix)
             }];
             remove.attributes = UIMenuElementAttributesDestructive;
             [actions addObject:remove];
+        }
+        if (!current.isLink && (current.isRegular || current.isDir) && current.identity) {
+            [actions addObject:[UIAction actionWithTitle:WQLocalized(@"Copy to Folder…") image:[UIImage systemImageNamed:@"doc.on.doc"]
+                                              identifier:nil handler:^(UIAction *__unused a) {
+                WQItem *latest = currentItem();
+                if (latest) [weakSelf startCopy:latest];
+            }]];
         }
         if ([strongSelf canEditHere]) {
             if (!current.isLink && (current.isDir || current.isRegular)) {
