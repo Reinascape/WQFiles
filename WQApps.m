@@ -1319,11 +1319,18 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
             // A backup whose files were swapped (e.g. from another backup
             // tool) no longer matches its manifest: ask before using it.
             NSString *checkError = nil;
-            NSDictionary *edited = [backup[@"verified"] boolValue] ? wq_backup_edited_parts(path, app.bundleID, &checkError) : @{};
+            NSDictionary *approved = nil;
+            NSDictionary *edited = [backup[@"verified"] boolValue] ? wq_backup_edited_parts(path, app.bundleID, &approved, &checkError) : @{};
+            if (!edited) {
+                NSString *message = WQLocalizedFormat(@"The backup is not safe to restore (%@). Nothing was changed.",
+                                                       checkError ?: WQLocalized(@"The selected backup changed before restore"));
+                dispatch_async(dispatch_get_main_queue(), ^{ [self finish:WQLocalized(@"Not restored") message:message]; });
+                return;
+            }
             if (edited.count) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [self setBusy:NO status:nil];
-                    [self confirmEditedRestore:app from:path edited:edited];
+                    [self confirmEditedRestore:app from:path edited:edited approved:approved];
                 });
                 return;
             }
@@ -1336,6 +1343,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
 }
 
 - (void)confirmEditedRestore:(WQAppItem *)app from:(NSString *)path edited:(NSDictionary<NSString *, NSString *> *)edited
+                 approved:(NSDictionary<NSString *, NSString *> *)approved
 {
     NSString *parts = [[edited.allKeys sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@", "];
     wq_log(@"restore %@: backup %@ was edited after it was made (%@)", app.bundleID, path.lastPathComponent, parts);
@@ -1347,7 +1355,7 @@ static void WQAppScanWatch(WQScanCancellation *cancellation, NSUInteger lastSeri
         [self setBusy:YES status:WQLocalizedFormat(@"Restoring %@…", app.name)];
         dispatch_async(wq_io(), ^{
             NSString *title = nil, *message = nil;
-            [self restore:app from:path accepting:edited title:&title message:&message];
+            [self restore:app from:path accepting:approved title:&title message:&message];
             dispatch_async(dispatch_get_main_queue(), ^{ [self finish:title message:message]; });
         });
     })];
@@ -1493,7 +1501,11 @@ static BOOL wq_validate_backup_hashes_accepting(NSString *backup, NSArray<NSStri
                                                 NSString **error)
 {
     NSDictionary *hashes = manifest[@"PartHashes"];
-    if (!hashes) return YES;   // backups made before content hashes existed
+    if (!hashes && !accepted) return YES;   // backups made before content hashes existed
+    if (accepted && ![[NSSet setWithArray:accepted.allKeys] isEqualToSet:[NSSet setWithArray:parts]]) {
+        if (error) *error = WQLocalized(@"The selected backup changed before restore");
+        return NO;
+    }
     for (NSString *part in parts) {
         NSString *expected = accepted[part] ?: hashes[part];
         if (![expected isKindOfClass:NSString.class] || !expected.length) {
@@ -1519,20 +1531,23 @@ static BOOL wq_validate_backup_hashes(NSString *backup, NSArray<NSString *> *par
 
 // Parts whose contents differ from the manifest (part -> current hash), or
 // nil with an error. Empty when the backup is as it was made.
-static NSDictionary<NSString *, NSString *> *wq_backup_edited_parts(NSString *backup, NSString *bundleID, NSString **error)
+static NSDictionary<NSString *, NSString *> *wq_backup_edited_parts(NSString *backup, NSString *bundleID, NSDictionary **approved, NSString **error)
 {
     NSArray<NSString *> *parts = nil;
     NSDictionary *manifest = nil;
     if (!wq_validate_backup(backup, bundleID, YES, &parts, &manifest, NULL, error)) return nil;
     NSDictionary *hashes = manifest[@"PartHashes"];
     NSMutableDictionary *edited = [NSMutableDictionary new];
+    NSMutableDictionary *current = [NSMutableDictionary new];
     if (![hashes isKindOfClass:NSDictionary.class]) return edited;
     for (NSString *part in parts) {
         BOOL exists = NO;
         NSString *actual = WQAppsSupportTreeContentSignature([backup stringByAppendingPathComponent:part], &exists, error);
         if (!actual || !exists) return nil;
+        current[part] = actual;
         if (![actual isEqual:hashes[part]]) edited[part] = actual;
     }
+    *approved = [current copy];
     return edited;
 }
 
@@ -1671,37 +1686,43 @@ NSString *wq_recover_interrupted_restore(void)
         *message = WQLocalizedFormat(@"The current data couldn't be backed up first (%@). Nothing was changed.", error ?: WQLocalized(@"see Log"));
         return;
     }
-    if (!wq_begin_restore_journal(app, backup, safety, &error)) {
+    // Copy every part into private staging and verify the exact copies that
+    // will be installed before starting a journal or touching live data.
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *staging = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                         [@"WQAppsRestore-" stringByAppendingString:NSUUID.UUID.UUIDString]];
+    NSError *stageError = nil;
+    BOOL staged = [fm createDirectoryAtPath:staging withIntermediateDirectories:NO attributes:nil error:&stageError];
+    for (NSString *part in parts) {
+        if (!staged) break;
+        staged = wq_copy_part_and_verify([backup stringByAppendingPathComponent:part],
+                                        [staging stringByAppendingPathComponent:part], NULL, &error);
+    }
+    if (!staged ||
+        !wq_validate_backup_hashes_accepting(staging, parts, manifest, accepted, &error) ||
+        !wq_validate_container(app.container, app.bundleID, app.containerDevice, app.containerInode, &error) ||
+        !wq_begin_restore_journal(app, backup, safety, &error)) {
+        [fm removeItemAtPath:staging error:nil];
         *title = WQLocalized(@"Not restored");
-        *message = [NSString stringWithFormat:@"%@. Nothing was changed; the safety backup was retained at %@ for manual recovery.",
-                    error ?: WQLocalized(@"The recovery journal could not be written"), safety.lastPathComponent];
+        *message = WQLocalizedFormat(@"The backup is not safe to restore (%@). Nothing was changed.",
+                                     error ?: stageError.localizedDescription ?: WQLocalized(@"The selected backup changed before restore"));
         return;
     }
-    // 3. Re-read and validate the selected backup immediately before the first
-    // mutation. A changed or incomplete source fails closed and retains the
-    // journal/safety material.
-    error = nil;
-    NSArray<NSString *> *preRestoreParts = nil;
-    NSDictionary *preRestoreManifest = nil;
-    if (!wq_validate_container(app.container, app.bundleID, app.containerDevice, app.containerInode, &error) ||
-        !wq_validate_backup(backup, app.bundleID, YES, &preRestoreParts, &preRestoreManifest, NULL, &error) ||
-        ![preRestoreParts isEqualToArray:parts] ||
-        !wq_validate_backup_hashes_accepting(backup, preRestoreParts, preRestoreManifest, accepted, &error)) {
-        error = error ?: WQLocalized(@"The selected backup changed before restore");
-    }
-    BOOL ok = error == nil;
+    BOOL ok = YES;
     NSDictionary *restorePlan = WQRestorePlan([parts containsObject:@"Documents"],
                                                [parts containsObject:@"Library"]);
     for (NSString *part in kAppBackupParts()) {
         if (!ok) break;
-        NSString *src = [backup stringByAppendingPathComponent:part];
+        NSString *src = [staging stringByAppendingPathComponent:part];
         NSString *dst = [app.container stringByAppendingPathComponent:part];
         if (!wq_validate_container(app.container, app.bundleID, app.containerDevice, app.containerInode, &error)) {
             ok = NO;
             break;
         }
         if ([restorePlan[part] boolValue]) {
-            if (!wq_replace_part(src, dst, &error)) { ok = NO; break; }
+            unsigned long long ignored = 0;
+            if (!wq_purge_and_verify(dst, &ignored, &error) ||
+                !wq_copy_part_and_verify(src, dst, NULL, &error)) { ok = NO; break; }
         } else {
             unsigned long long ignored = 0;
             if (!wq_purge_and_verify(dst, &ignored, &error)) {
@@ -1710,13 +1731,9 @@ NSString *wq_recover_interrupted_restore(void)
             }
         }
     }
-    NSArray<NSString *> *postRestoreParts = nil;
-    if (ok && (!wq_validate_container(app.container, app.bundleID, app.containerDevice, app.containerInode, &error) ||
-               !wq_validate_backup(backup, app.bundleID, YES, &postRestoreParts, NULL, NULL, &error) ||
-               ![postRestoreParts isEqualToArray:parts])) {
+    [fm removeItemAtPath:staging error:nil];
+    if (ok && !wq_validate_container(app.container, app.bundleID, app.containerDevice, app.containerInode, &error))
         ok = NO;
-        error = error ?: WQLocalized(@"The selected backup changed during restore");
-    }
     if (ok) {
         NSString *commitError = nil;
         NSString *removeError = nil;
