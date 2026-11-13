@@ -922,7 +922,12 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     _cancellation = cancellation;
     NSString *root = _root, *query = _query;
     __weak typeof(self) weakSelf = self;
-    dispatch_async(wq_io(), ^{
+    // Its own queue: a long walk must not hold up file loads and saves on wq_io.
+    static dispatch_queue_t searchQueue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ searchQueue = dispatch_queue_create("wqfiles.folder-search", DISPATCH_QUEUE_SERIAL); });
+    dispatch_async(searchQueue, ^{
+        CFAbsoluteTime lastProgress = 0;
         NSMutableArray<NSString *> *pending = [NSMutableArray arrayWithObject:root];
         NSMutableArray<WQItem *> *matches = [NSMutableArray new];
         NSUInteger visited = 0;
@@ -942,6 +947,18 @@ static NSString *wq_temp_work_dir(NSString *prefix)
                 for (NSString *name in names) {
                     if (cancellation.isCancelled) break;
                     if (visited++ >= entryLimit || matches.count >= matchLimit) { limited = YES; break; }
+                    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+                    if (now - lastProgress > 0.3) {
+                        lastProgress = now;
+                        NSString *text = WQLocalizedFormat(@"Searching… %lu items checked, %lu found",
+                                                           (unsigned long)visited, (unsigned long)matches.count);
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            WQFolderSearchViewController *screen = weakSelf;
+                            if (!screen || !screen->_cancellation) return;
+                            screen->_status = text;
+                            [screen.tableView reloadData];
+                        });
+                    }
                     @autoreleasepool {
                         NSString *path = [folder stringByAppendingPathComponent:name];
                         struct stat st;
@@ -1669,7 +1686,7 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     if (!gWQCopyPending || ![self canMoveHere]) return;
     NSString *source = gWQMovePaths.firstObject;
     NSDictionary *identity = wq_identity_at(gWQMoveIdentities, 0);
-    NSString *destination = [_path stringByAppendingPathComponent:source.lastPathComponent];
+    NSString *folder = _path;
     wq_set_move_paths(nil, nil, NO);
     [self runBusy:WQLocalized(@"Copy") failure:WQLocalized(@"Copying failed.")
              work:^BOOL(NSString **error, NSString **__unused note) {
@@ -1678,6 +1695,10 @@ static NSString *wq_temp_work_dir(NSString *prefix)
             *error = WQLocalized(@"The item was moved, replaced or changed after it was selected. It was left as it is.");
             return NO;
         }
+        // A same-named item there is kept; the copy gets "Name 2".
+        NSString *name = wq_free_name_in(folder, source.lastPathComponent, [NSMutableSet new]);
+        if (!name) { *error = WQLocalized(@"No free name in this folder"); return NO; }
+        NSString *destination = [folder stringByAppendingPathComponent:name];
         return S_ISDIR(st.st_mode) ? wq_copy_tree_new(source, destination, nil, error)
                                   : wq_create_file_from(destination, source, error);
     }];
@@ -2783,7 +2804,7 @@ static NSString *wq_free_name_in(NSString *dir, NSString *name, NSMutableSet<NSS
         // Reserve the original name even if it disappears after the identity check.
         NSMutableSet *claimed = [NSMutableSet setWithObject:source.lastPathComponent.lowercaseString];
         NSString *name = wq_free_name_in(directory, source.lastPathComponent, claimed);
-        if (!name) return NO;
+        if (!name) { *error = WQLocalized(@"No free name in this folder"); return NO; }
         NSString *destination = [directory stringByAppendingPathComponent:name];
         return isDirectory ? wq_copy_tree_new(source, destination, nil, error)
                            : wq_create_file_from(destination, source, error);

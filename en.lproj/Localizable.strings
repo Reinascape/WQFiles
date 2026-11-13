@@ -923,3 +923,4 @@
 "Search limit reached. Try a smaller folder or a more specific name." = "Search limit reached. Try a smaller folder or a more specific name.";
 "Some items could not be searched." = "Some items could not be searched.";
 "No matching names." = "No matching names.";
+"Searching… %lu items checked, %lu found" = "Searching… %lu items checked, %lu found";

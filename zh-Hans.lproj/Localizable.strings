@@ -923,3 +923,4 @@
 "Search limit reached. Try a smaller folder or a more specific name." = "已达到搜索上限。请尝试较小的文件夹或更具体的名称。";
 "Some items could not be searched." = "无法搜索部分项目。";
 "No matching names." = "没有匹配的名称。";
+"Searching… %lu items checked, %lu found" = "正在搜索… 已检查 %lu 项，找到 %lu 项";

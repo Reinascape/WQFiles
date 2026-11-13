@@ -923,3 +923,4 @@
 "Search limit reached. Try a smaller folder or a more specific name." = "Arama sınırına ulaşıldı. Daha küçük bir klasör veya daha belirgin bir ad deneyin.";
 "Some items could not be searched." = "Bazı öğeler aranamadı.";
 "No matching names." = "Eşleşen ad yok.";
+"Searching… %lu items checked, %lu found" = "Aranıyor… %lu öğe kontrol edildi, %lu bulundu";

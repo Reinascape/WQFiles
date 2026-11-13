@@ -923,3 +923,4 @@
 "Search limit reached. Try a smaller folder or a more specific name." = "검색 한도에 도달했습니다. 더 작은 폴더나 더 구체적인 이름으로 검색하세요.";
 "Some items could not be searched." = "일부 항목을 검색할 수 없었습니다.";
 "No matching names." = "일치하는 이름이 없습니다.";
+"Searching… %lu items checked, %lu found" = "검색 중… %lu개 확인, %lu개 찾음";

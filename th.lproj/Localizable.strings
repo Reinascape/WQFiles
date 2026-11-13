@@ -923,3 +923,4 @@
 "Search limit reached. Try a smaller folder or a more specific name." = "ถึงขีดจำกัดการค้นหาแล้ว ลองใช้โฟลเดอร์ที่เล็กลงหรือชื่อที่เจาะจงขึ้น";
 "Some items could not be searched." = "ค้นหาบางรายการไม่ได้";
 "No matching names." = "ไม่พบชื่อที่ตรงกัน";
+"Searching… %lu items checked, %lu found" = "กำลังค้นหา… ตรวจแล้ว %lu รายการ พบ %lu รายการ";

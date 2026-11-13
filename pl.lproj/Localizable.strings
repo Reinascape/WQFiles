@@ -923,3 +923,4 @@
 "Search limit reached. Try a smaller folder or a more specific name." = "Osiągnięto limit wyszukiwania. Wybierz mniejszy folder lub wpisz dokładniejszą nazwę.";
 "Some items could not be searched." = "Nie udało się przeszukać niektórych elementów.";
 "No matching names." = "Brak pasujących nazw.";
+"Searching… %lu items checked, %lu found" = "Wyszukiwanie… sprawdzono: %lu, znaleziono: %lu";

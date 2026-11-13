@@ -919,3 +919,4 @@
 "Search limit reached. Try a smaller folder or a more specific name." = "Suchlimit erreicht. Wähle einen kleineren Ordner oder einen genaueren Namen.";
 "Some items could not be searched." = "Einige Objekte konnten nicht durchsucht werden.";
 "No matching names." = "Keine passenden Namen.";
+"Searching… %lu items checked, %lu found" = "Suche … %lu Objekte geprüft, %lu gefunden";
