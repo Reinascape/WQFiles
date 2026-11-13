@@ -82,3 +82,10 @@ clear_preparation = sharing.split("static void wq_clear_preparation", 1)[1].spli
 require(clear_preparation, "if (!host) return;", "nil weak host association guard")
 
 print("browser UI regression checks: PASS")
+
+# App backups never come out empty because access wasn't there yet, and an
+# empty backup is never restored (it would empty the app's data).
+apps = (ROOT / "WQApps.m").read_text()
+require(apps, "NSArray<NSString *> *top = wq_list(container, &listError);", "backup lists the container before choosing parts")
+forbid(apps, "errno == ENOENT) continue;   // the app has none", "part skipped on an ENOENT that may be a missing token")
+require(apps, "if (!parts.count) {", "empty backups are refused on restore")

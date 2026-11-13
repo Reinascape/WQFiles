@@ -948,3 +948,6 @@
 "Check for Updates" = "检查更新";
 "WQ Files %@ is available" = "WQ Files %@ 现已推出";
 "Reopen Last Folder: WQ Files starts in the folder you were in. Check for Updates: twice a day WQ Files reads the public release list on GitHub and shows a note when a new version is out; nothing about your device is sent." = "重新打开上次的文件夹：WQ Files 会在你上次所在的文件夹中启动。检查更新：WQ Files 每天两次读取 GitHub 上的公开发布列表，并在有新版本时显示提示；不会发送任何有关你设备的信息。";
+"WQ Files has no access to the app's data right now (%@). Nothing was backed up; try again." = "WQ Files 目前无法访问该应用的数据（%@）。未进行任何备份，请重试。";
+"The app's data folder holds neither Documents nor Library, so there is nothing to back up." = "该应用的数据文件夹中既没有 Documents 也没有 Library，因此没有可备份的内容。";
+"This backup is empty (it was made while WQ Files had no access to the app). Restoring it would delete the app's data, so nothing was changed." = "此备份为空（创建时 WQ Files 无法访问该应用）。恢复它会删除应用的数据，因此未做任何更改。";

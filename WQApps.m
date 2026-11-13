@@ -429,6 +429,24 @@ static NSString *wq_make_backup_from(NSString *bundleID, NSString *container, NS
         if (error) *error = WQLocalized(@"Cannot create the backup folder");
         return nil;
     }
+    // Access first: without a token for the container, lstat of its parts can
+    // report "no such file" and the backup would come out empty. An app's
+    // data container always holds at least Library, so a container that
+    // can't be listed, or seems to hold neither part, fails the backup.
+    wq_grant(container);
+    NSString *listError = nil;
+    NSArray<NSString *> *top = wq_list(container, &listError);
+    if (!top) {
+        [fm removeItemAtPath:staging error:nil];
+        if (error) *error = WQLocalizedFormat(@"WQ Files has no access to the app's data right now (%@). Nothing was backed up; try again.",
+                                              listError ?: @"no token");
+        return nil;
+    }
+    if (![top containsObject:@"Documents"] && ![top containsObject:@"Library"]) {
+        [fm removeItemAtPath:staging error:nil];
+        if (error) *error = WQLocalized(@"The app's data folder holds neither Documents nor Library, so there is nothing to back up.");
+        return nil;
+    }
     NSMutableArray *parts = [NSMutableArray new];
     NSMutableDictionary<NSString *, NSString *> *sourceStates = [NSMutableDictionary new];
     NSMutableDictionary<NSString *, NSString *> *partHashes = [NSMutableDictionary new];
@@ -437,7 +455,7 @@ static NSString *wq_make_backup_from(NSString *bundleID, NSString *container, NS
     for (NSString *part in kAppBackupParts()) {
         NSString *src = [container stringByAppendingPathComponent:part];
         struct stat st;
-        if (lstat(src.fileSystemRepresentation, &st) != 0 && errno == ENOENT) continue;   // the app has none
+        if (![top containsObject:part]) continue;   // the app has none (decided from the container listing)
         if (!wq_stat(src, &st)) { ok = NO; if (error) *error = WQLocalizedFormat(@"Cannot access %@", part); break; }
         BOOL sourceExists = NO;
         NSString *sourceState = WQAppsSupportTreeSignature(src, YES, &sourceExists, error);
@@ -1667,9 +1685,12 @@ NSString *wq_recover_interrupted_restore(void)
         *message = WQLocalizedFormat(@"The backup is not safe to restore (%@). Nothing was changed.", error ?: WQLocalized(@"invalid manifest"));
         return;
     }
-    if (!verified && !parts.count) {
+    if (!parts.count) {
+        // Restoring nothing would empty the app's Documents and Library.
+        // Older versions could save such an empty backup when access failed.
         *title = WQLocalized(@"Not restored");
-        *message = WQLocalized(@"The legacy backup is empty. Nothing was changed.");
+        *message = verified ? WQLocalized(@"This backup is empty (it was made while WQ Files had no access to the app). Restoring it would delete the app's data, so nothing was changed.")
+                            : WQLocalized(@"The legacy backup is empty. Nothing was changed.");
         return;
     }
     if (!wq_validate_container(app.container, app.bundleID, app.containerDevice, app.containerInode, &error)) {

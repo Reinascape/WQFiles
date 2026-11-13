@@ -944,3 +944,6 @@
 "Check for Updates" = "التحقق من وجود تحديثات";
 "WQ Files %@ is available" = "WQ Files %@ متاح";
 "Reopen Last Folder: WQ Files starts in the folder you were in. Check for Updates: twice a day WQ Files reads the public release list on GitHub and shows a note when a new version is out; nothing about your device is sent." = "إعادة فتح آخر مجلد: يبدأ WQ Files في المجلد الذي كنت فيه. التحقق من وجود تحديثات: مرتين يوميًا يقرأ WQ Files قائمة الإصدارات العامة على GitHub ويعرض إشعارًا عند صدور إصدار جديد؛ ولا يتم إرسال أي شيء عن جهازك.";
+"WQ Files has no access to the app's data right now (%@). Nothing was backed up; try again." = "لا يملك WQ Files حالياً وصولاً إلى بيانات التطبيق (%@). لم يُنسخ أي شيء احتياطياً؛ حاول مرة أخرى.";
+"The app's data folder holds neither Documents nor Library, so there is nothing to back up." = "لا يحتوي مجلد بيانات التطبيق على Documents ولا Library، لذا لا يوجد ما يُنسخ احتياطياً.";
+"This backup is empty (it was made while WQ Files had no access to the app). Restoring it would delete the app's data, so nothing was changed." = "هذه النسخة الاحتياطية فارغة (أُنشئت عندما لم يكن لدى WQ Files وصول إلى التطبيق). استعادتها ستحذف بيانات التطبيق، لذا لم يُغيَّر شيء.";

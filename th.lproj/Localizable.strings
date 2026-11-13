@@ -948,3 +948,6 @@
 "Check for Updates" = "ตรวจสอบการอัปเดต";
 "WQ Files %@ is available" = "WQ Files %@ พร้อมใช้งานแล้ว";
 "Reopen Last Folder: WQ Files starts in the folder you were in. Check for Updates: twice a day WQ Files reads the public release list on GitHub and shows a note when a new version is out; nothing about your device is sent." = "เปิดโฟลเดอร์ล่าสุดอีกครั้ง: WQ Files จะเริ่มต้นในโฟลเดอร์ที่คุณอยู่ล่าสุด ตรวจสอบการอัปเดต: WQ Files จะอ่านรายการรุ่นสาธารณะบน GitHub วันละสองครั้ง และแสดงข้อความเมื่อมีเวอร์ชันใหม่ โดยจะไม่มีการส่งข้อมูลใดๆ เกี่ยวกับอุปกรณ์ของคุณ";
+"WQ Files has no access to the app's data right now (%@). Nothing was backed up; try again." = "ขณะนี้ WQ Files เข้าถึงข้อมูลของแอปไม่ได้ (%@) ไม่มีการสำรองข้อมูลใดๆ โปรดลองอีกครั้ง";
+"The app's data folder holds neither Documents nor Library, so there is nothing to back up." = "โฟลเดอร์ข้อมูลของแอปไม่มีทั้ง Documents และ Library จึงไม่มีอะไรให้สำรอง";
+"This backup is empty (it was made while WQ Files had no access to the app). Restoring it would delete the app's data, so nothing was changed." = "ข้อมูลสำรองนี้ว่างเปล่า (สร้างขึ้นขณะที่ WQ Files เข้าถึงแอปไม่ได้) การกู้คืนจะลบข้อมูลของแอป จึงไม่มีการเปลี่ยนแปลงใดๆ";

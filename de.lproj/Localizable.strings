@@ -944,3 +944,6 @@
 "Check for Updates" = "Nach Updates suchen";
 "WQ Files %@ is available" = "WQ Files %@ ist verfügbar";
 "Reopen Last Folder: WQ Files starts in the folder you were in. Check for Updates: twice a day WQ Files reads the public release list on GitHub and shows a note when a new version is out; nothing about your device is sent." = "Letzten Ordner wieder öffnen: WQ Files startet in dem Ordner, in dem du zuletzt warst. Nach Updates suchen: Zweimal täglich liest WQ Files die öffentliche Release-Liste auf GitHub und zeigt einen Hinweis an, wenn eine neue Version erschienen ist; es werden keine Daten über dein Gerät gesendet.";
+"WQ Files has no access to the app's data right now (%@). Nothing was backed up; try again." = "WQ Files hat gerade keinen Zugriff auf die Daten der App (%@). Es wurde nichts gesichert; versuche es erneut.";
+"The app's data folder holds neither Documents nor Library, so there is nothing to back up." = "Der Datenordner der App enthält weder Documents noch Library, es gibt also nichts zu sichern.";
+"This backup is empty (it was made while WQ Files had no access to the app). Restoring it would delete the app's data, so nothing was changed." = "Dieses Backup ist leer (es entstand, als WQ Files keinen Zugriff auf die App hatte). Die Wiederherstellung würde die Daten der App löschen, daher wurde nichts geändert.";
