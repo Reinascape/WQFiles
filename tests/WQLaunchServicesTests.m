@@ -304,7 +304,7 @@ static void TestLayoutDiagnosticsBudget(void)
     NSUInteger steps = wq_ls_test_layout_vote_steps(data, &cutOff, &keys, &pathCount);
     WQCheck(pathCount == 30);
     WQCheck(cutOff);
-    WQCheck(steps <= (1u << 20) + 1);
+    WQCheck(steps <= (1u << 23) + 1);
     WQCheck(keys <= 1024);
 }
 #endif

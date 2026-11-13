@@ -154,12 +154,38 @@ static NSString *wq_find_ls_store(BOOL *searched)
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
     if (cachedValid) wq_ls_consider_candidate(cached, &bestPath, &best, seen);
 
+    // lsd's Caches folder can hold more than one store: an iOS update leaves
+    // the old schema's file (the number in the name changes) next to the new
+    // one. The newest file in the remembered folder is used, and the folder's
+    // stores are logged once, so a Log shows which ones exist.
+    if (cached.length) {
+        NSString *caches = cached.stringByDeletingLastPathComponent;
+        NSMutableArray<NSString *> *seenNames = [NSMutableArray new];
+        for (NSString *name in [wq_list(caches, NULL) sortedArrayUsingSelector:@selector(compare:)]) {
+            if (![name hasPrefix:@"com.apple.LaunchServices-"] || ![name hasSuffix:@".csstore"]) continue;
+            NSString *candidate = [caches stringByAppendingPathComponent:name];
+            struct stat st;
+            if (wq_stat(candidate, &st))
+                [seenNames addObject:[NSString stringWithFormat:@"%@ (%.1f MB, modified %ld)", name, st.st_size / 1048576.0,
+                                      (long)st.st_mtimespec.tv_sec]];
+            wq_ls_consider_candidate(candidate, &bestPath, &best, seen);
+        }
+        static NSString *loggedNames;
+        NSString *joined = [seenNames componentsJoinedByString:@", "];
+        if (seenNames.count > 1 && ![joined isEqualToString:loggedNames]) {
+            loggedNames = joined;
+            wq_log(@"names: stores in lsd's caches: %@; using %@", joined, bestPath.lastPathComponent ?: @"none");
+        }
+        if (bestPath && ![bestPath isEqualToString:cached])
+            [NSUserDefaults.standardUserDefaults setObject:bestPath forKey:kWQLSStoreKey];
+    }
+
     // Listing the daemon containers is a full id scan (minutes, and it asks
     // first); the database is found by the container scan among the newest
     // ids and remembered, so names only use the remembered location.
     if (!wq_ls_test_daemon_search) {
-        if (searched) *searched = cachedValid;
-        return cachedValid ? cached : nil;
+        if (searched) *searched = bestPath != nil;
+        return bestPath;
     }
     NSArray *daemons = wq_enumerate(@"/private/var/mobile/Containers/Data/InternalDaemon", 0, nil, nil);
     if (daemons && searched) *searched = YES;
@@ -373,8 +399,8 @@ static NSMutableData *wq_ls_container_path_refs(const uint8_t *b, size_t n)
 
 // The layout hint is diagnostics only: it must stay cheap whatever the store
 // holds (a malformed one can repeat path references everywhere).
-static const NSUInteger kWQLSMaxVoteMatches = 4096;        // references examined
-static const NSUInteger kWQLSMaxVoteSteps = 1u << 20;      // inner-loop steps
+static const NSUInteger kWQLSMaxVoteMatches = 32768;       // references examined
+static const NSUInteger kWQLSMaxVoteSteps = 1u << 23;      // inner-loop steps
 static const NSUInteger kWQLSMaxVoteKeys = 1024;           // distinct (size, offset) pairs
 
 // Votes for (record size, offset of the container reference). *steps counts
@@ -433,13 +459,18 @@ static void wq_ls_log_summary(const uint8_t *b, size_t n, NSData *refData, NSStr
         NSUInteger cx = [votes countForObject:x], cy = [votes countForObject:y];
         return cx > cy ? NSOrderedAscending : cx < cy ? NSOrderedDescending : [x compare:y];
     }];
-    NSMutableArray *parts = [NSMutableArray new];
-    for (NSNumber *key in [top subarrayWithRange:NSMakeRange(0, MIN(top.count, (NSUInteger)8))]) {
+    NSMutableArray *parts = [NSMutableArray new], *large = [NSMutableArray new];
+    for (NSNumber *key in top) {
         uint64_t value = key.unsignedLongLongValue;
-        [parts addObject:[NSString stringWithFormat:@"0x%llx@0x%llx x%lu", value >> 16, value & 0xffff,
-                          (unsigned long)[votes countForObject:key]]];
+        NSString *text = [NSString stringWithFormat:@"0x%llx@0x%llx x%lu", value >> 16, value & 0xffff,
+                          (unsigned long)[votes countForObject:key]];
+        if (parts.count < 8) [parts addObject:text];
+        // App and plug-in records are large; small index records can outvote them.
+        if ((value >> 16) >= 0xe0 && large.count < 8) [large addObject:text];
+        if (parts.count >= 8 && large.count >= 8) break;
     }
     wq_log(@"names: layout hint (record size@container offset): %@", [parts componentsJoinedByString:@", "]);
+    if (large.count) wq_log(@"names: layout hint, records of 0xe0 bytes or more: %@", [large componentsJoinedByString:@", "]);
 }
 
 static BOOL wq_parse_ls_store(NSData *data, NSDictionary **displayOut,
