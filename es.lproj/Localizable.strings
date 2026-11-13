@@ -917,3 +917,9 @@
 "Add to Favorites" = "Añadir a favoritos";
 "Remove from Favorites" = "Quitar de favoritos";
 "Add a folder from its More menu." = "Añade una carpeta desde su menú Más.";
+"Search Inside Folders…" = "Buscar en subcarpetas…";
+"Search" = "Buscar";
+"Search stopped. Results may be incomplete." = "Búsqueda detenida. Puede que falten resultados.";
+"Search limit reached. Try a smaller folder or a more specific name." = "Se alcanzó el límite de búsqueda. Prueba con una carpeta más pequeña o un nombre más concreto.";
+"Some items could not be searched." = "No se pudo buscar en algunos elementos.";
+"No matching names." = "No hay nombres coincidentes.";

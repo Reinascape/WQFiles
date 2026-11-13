@@ -917,3 +917,9 @@
 "Add to Favorites" = "즐겨찾기에 추가";
 "Remove from Favorites" = "즐겨찾기에서 제거";
 "Add a folder from its More menu." = "폴더의 더 보기 메뉴에서 추가하세요.";
+"Search Inside Folders…" = "하위 폴더 검색…";
+"Search" = "검색";
+"Search stopped. Results may be incomplete." = "검색이 중단되었습니다. 결과가 불완전할 수 있습니다.";
+"Search limit reached. Try a smaller folder or a more specific name." = "검색 한도에 도달했습니다. 더 작은 폴더나 더 구체적인 이름으로 검색하세요.";
+"Some items could not be searched." = "일부 항목을 검색할 수 없었습니다.";
+"No matching names." = "일치하는 이름이 없습니다.";

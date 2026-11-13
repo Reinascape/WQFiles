@@ -913,3 +913,9 @@
 "Add to Favorites" = "إضافة إلى المفضلة";
 "Remove from Favorites" = "إزالة من المفضلة";
 "Add a folder from its More menu." = "أضف مجلدًا من قائمة «المزيد» الخاصة به.";
+"Search Inside Folders…" = "البحث في المجلدات الفرعية…";
+"Search" = "بحث";
+"Search stopped. Results may be incomplete." = "توقف البحث. قد تكون النتائج غير مكتملة.";
+"Search limit reached. Try a smaller folder or a more specific name." = "بلغ البحث الحد الأقصى. جرّب مجلدًا أصغر أو اسمًا أكثر تحديدًا.";
+"Some items could not be searched." = "تعذّر البحث في بعض العناصر.";
+"No matching names." = "لا توجد أسماء مطابقة.";

@@ -917,3 +917,9 @@
 "Add to Favorites" = "เพิ่มในรายการโปรด";
 "Remove from Favorites" = "นำออกจากรายการโปรด";
 "Add a folder from its More menu." = "เพิ่มโฟลเดอร์จากเมนูเพิ่มเติมของโฟลเดอร์นั้น";
+"Search Inside Folders…" = "ค้นหาในโฟลเดอร์ย่อย…";
+"Search" = "ค้นหา";
+"Search stopped. Results may be incomplete." = "หยุดการค้นหาแล้ว ผลลัพธ์อาจไม่ครบถ้วน";
+"Search limit reached. Try a smaller folder or a more specific name." = "ถึงขีดจำกัดการค้นหาแล้ว ลองใช้โฟลเดอร์ที่เล็กลงหรือชื่อที่เจาะจงขึ้น";
+"Some items could not be searched." = "ค้นหาบางรายการไม่ได้";
+"No matching names." = "ไม่พบชื่อที่ตรงกัน";

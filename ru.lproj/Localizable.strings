@@ -917,3 +917,9 @@
 "Add to Favorites" = "Добавить в избранное";
 "Remove from Favorites" = "Удалить из избранного";
 "Add a folder from its More menu." = "Добавьте папку из её меню «Ещё».";
+"Search Inside Folders…" = "Поиск во вложенных папках…";
+"Search" = "Поиск";
+"Search stopped. Results may be incomplete." = "Поиск остановлен. Результаты могут быть неполными.";
+"Search limit reached. Try a smaller folder or a more specific name." = "Достигнут предел поиска. Выберите папку поменьше или уточните имя.";
+"Some items could not be searched." = "Некоторые элементы не удалось проверить.";
+"No matching names." = "Совпадений по имени нет.";

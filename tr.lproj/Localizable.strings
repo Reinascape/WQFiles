@@ -917,3 +917,9 @@
 "Add to Favorites" = "Favorilere Ekle";
 "Remove from Favorites" = "Favorilerden Kaldır";
 "Add a folder from its More menu." = "Bir klasörü Daha Fazla menüsünden ekleyin.";
+"Search Inside Folders…" = "Alt Klasörlerde Ara…";
+"Search" = "Ara";
+"Search stopped. Results may be incomplete." = "Arama durduruldu. Sonuçlar eksik olabilir.";
+"Search limit reached. Try a smaller folder or a more specific name." = "Arama sınırına ulaşıldı. Daha küçük bir klasör veya daha belirgin bir ad deneyin.";
+"Some items could not be searched." = "Bazı öğeler aranamadı.";
+"No matching names." = "Eşleşen ad yok.";

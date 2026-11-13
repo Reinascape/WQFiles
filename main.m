@@ -890,6 +890,156 @@ static NSString *wq_temp_work_dir(NSString *prefix)
     return [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil] ? dir : nil;
 }
 
+@interface WQFolderSearchViewController : UITableViewController
+- (instancetype)initWithPath:(NSString *)path query:(NSString *)query readOnly:(BOOL)readOnly;
+@end
+
+@implementation WQFolderSearchViewController {
+    NSString *_root, *_query, *_status;
+    BOOL _readOnly;
+    NSArray<WQItem *> *_matches;
+    WQScanCancellation *_cancellation;
+}
+
+- (instancetype)initWithPath:(NSString *)path query:(NSString *)query readOnly:(BOOL)readOnly
+{
+    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
+        _root = [path copy];
+        _query = [query copy];
+        _readOnly = readOnly;
+        self.title = query;
+    }
+    return self;
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    _status = WQLocalized(@"Searching…");
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:WQLocalized(@"Stop")
+        style:UIBarButtonItemStylePlain target:self action:@selector(stopSearch)];
+    WQScanCancellation *cancellation = [WQScanCancellation new];
+    _cancellation = cancellation;
+    NSString *root = _root, *query = _query;
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(wq_io(), ^{
+        NSMutableArray<NSString *> *pending = [NSMutableArray arrayWithObject:root];
+        NSMutableArray<WQItem *> *matches = [NSMutableArray new];
+        NSUInteger visited = 0;
+        BOOL unreadable = NO, limited = NO;
+        const NSUInteger entryLimit = 100000, matchLimit = 1000;
+        while (pending.count && !cancellation.isCancelled && !limited) {
+            @autoreleasepool {
+                NSString *folder = pending.lastObject;
+                [pending removeLastObject];
+                struct stat parent;
+                if (!wq_stat(folder, &parent) || !S_ISDIR(parent.st_mode)) {
+                    unreadable = YES;
+                    continue;
+                }
+                NSArray<NSString *> *names = wq_list(folder, NULL);
+                if (!names) unreadable = YES;
+                for (NSString *name in names) {
+                    if (cancellation.isCancelled) break;
+                    if (visited++ >= entryLimit || matches.count >= matchLimit) { limited = YES; break; }
+                    @autoreleasepool {
+                        NSString *path = [folder stringByAppendingPathComponent:name];
+                        struct stat st;
+                        if (!wq_stat(path, &st)) { unreadable = YES; continue; }
+                        if (S_ISDIR(st.st_mode)) [pending addObject:path];
+                        if (!(S_ISDIR(st.st_mode) || S_ISREG(st.st_mode)) ||
+                            ![name localizedStandardContainsString:query]) continue;
+                        WQItem *item = [WQItem new];
+                        item.path = path;
+                        item.name = name;
+                        item.isDir = S_ISDIR(st.st_mode);
+                        item.identity = wq_identity_for_stat(&st);
+                        [matches addObject:item];
+                    }
+                }
+            }
+        }
+        [matches sortUsingComparator:^NSComparisonResult(WQItem *a, WQItem *b) {
+            NSComparisonResult order = [a.name localizedStandardCompare:b.name];
+            return order == NSOrderedSame ? [a.path localizedStandardCompare:b.path] : order;
+        }];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            WQFolderSearchViewController *screen = weakSelf;
+            if (!screen) return;
+            screen->_cancellation = nil;
+            screen->_matches = matches;
+            screen.navigationItem.rightBarButtonItem = nil;
+            if (cancellation.isCancelled) screen->_status = WQLocalized(@"Search stopped. Results may be incomplete.");
+            else if (limited) screen->_status = WQLocalized(@"Search limit reached. Try a smaller folder or a more specific name.");
+            else if (unreadable) screen->_status = WQLocalized(@"Some items could not be searched.");
+            else screen->_status = matches.count ? nil : WQLocalized(@"No matching names.");
+            [screen.tableView reloadData];
+        });
+    });
+}
+
+- (void)stopSearch
+{
+    [_cancellation cancel];
+    self.navigationItem.rightBarButtonItem.enabled = NO;
+}
+
+- (void)viewDidDisappear:(BOOL)animated
+{
+    [super viewDidDisappear:animated];
+    if (self.isMovingFromParentViewController || !self.navigationController)
+        [_cancellation cancel];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    return (NSInteger)_matches.count;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section
+{
+    return _status;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    WQItem *item = _matches[(NSUInteger)indexPath.row];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"match"]
+        ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"match"];
+    UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
+    content.text = item.name;
+    NSUInteger prefix = [_root hasSuffix:@"/"] ? _root.length : _root.length + 1;
+    content.secondaryText = item.path.length > prefix ? [item.path substringFromIndex:prefix] : item.path;
+    content.secondaryTextProperties.numberOfLines = 2;
+    content.image = [UIImage systemImageNamed:item.isDir ? @"folder" : @"doc"];
+    cell.contentConfiguration = content;
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    WQItem *item = _matches[(NSUInteger)indexPath.row];
+    dispatch_async(wq_io(), ^{
+        BOOL current = [item.identity isEqualToDictionary:wq_item_identity(item.path)];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UINavigationController *nav = self.navigationController;
+            if (nav.topViewController != self) return;
+            if (!current) { wq_alert(self, @"Not found", WQVerbatim(item.path)); return; }
+            if (item.isDir) {
+                WQDirViewController *folder = [[WQDirViewController alloc] initWithPath:item.path title:item.name];
+                folder.readOnly = self->_readOnly;
+                [nav pushViewController:folder animated:YES];
+            } else {
+                wq_open_file(nav, item.path, self->_readOnly, WQOpenAuto);
+            }
+        });
+    });
+}
+
+@end
+
 @interface WQDirViewController ()
 - (BOOL)wq_wantsToolbar;
 @end
@@ -982,6 +1132,10 @@ static NSString *wq_temp_work_dir(NSString *prefix)
         }];
         completion(@[favorite]);
     }]];
+    if (!_labels) {
+        [menuItems addObject:[UIAction actionWithTitle:WQLocalized(@"Search Inside Folders…") image:[UIImage systemImageNamed:@"magnifyingglass"]
+                                          identifier:nil handler:^(UIAction *__unused action) { [weakSelf promptFolderSearch]; }]];
+    }
     // Built when the menu opens, so the checkmarks show the current order.
     [menuItems addObject:[UIDeferredMenuElement elementWithUncachedProvider:^(void (^completion)(NSArray<UIMenuElement *> *)) {
         WQSortKey current = wq_sort_key();
@@ -1123,6 +1277,29 @@ static NSString *wq_temp_work_dir(NSString *prefix)
 {
     [super viewDidLayoutSubviews];
     if (fabs(self.tableView.bounds.size.width - _headerWidth) > 0.5) [self updateHeader];
+}
+
+- (void)promptFolderSearch
+{
+    UIAlertController *alert = wq_alert_controller(@"Search Inside Folders…", nil, UIAlertControllerStyleAlert);
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        field.placeholder = WQLocalized(@"Name");
+        field.text = self.navigationItem.searchController.searchBar.text;
+        field.autocorrectionType = UITextAutocorrectionTypeNo;
+        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        field.returnKeyType = UIReturnKeySearch;
+    }];
+    __weak UIAlertController *weakAlert = alert;
+    [alert addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
+    [alert addAction:wq_alert_action(@"Search", UIAlertActionStyleDefault, ^(UIAlertAction *__unused action) {
+        NSString *query = [weakAlert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (!query.length) return;
+        WQFolderSearchViewController *results = [[WQFolderSearchViewController alloc] initWithPath:self->_path
+            query:query readOnly:self.readOnly || self->_backupStorage];
+        [self.navigationController pushViewController:results animated:YES];
+    })];
+    alert.preferredAction = alert.actions.lastObject;
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)copyPath

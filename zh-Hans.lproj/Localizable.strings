@@ -917,3 +917,9 @@
 "Add to Favorites" = "添加到收藏夹";
 "Remove from Favorites" = "从收藏夹移除";
 "Add a folder from its More menu." = "从文件夹的“更多”菜单中添加。";
+"Search Inside Folders…" = "搜索子文件夹…";
+"Search" = "搜索";
+"Search stopped. Results may be incomplete." = "搜索已停止。结果可能不完整。";
+"Search limit reached. Try a smaller folder or a more specific name." = "已达到搜索上限。请尝试较小的文件夹或更具体的名称。";
+"Some items could not be searched." = "无法搜索部分项目。";
+"No matching names." = "没有匹配的名称。";
