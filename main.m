@@ -3141,7 +3141,7 @@ static UIImage *wq_language_flag(NSString *code)
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         regions = @{ @"en": @"GB", @"de": @"DE", @"it": @"IT", @"es": @"ES", @"pt-BR": @"BR", @"pl": @"PL",
-                     @"ru": @"RU", @"ko": @"KR", @"zh-Hans": @"CN", @"ar": @"SA", @"tr": @"TR" };
+                     @"ru": @"RU", @"ko": @"KR", @"zh-Hans": @"CN", @"ar": @"SA", @"tr": @"TR", @"th": @"TH" };
         images = [NSCache new];
     });
     NSString *region = regions[code];
