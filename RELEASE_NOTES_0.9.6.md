@@ -24,8 +24,12 @@
 - **Replace All** when importing only replaces the file versions shown in the question; a file that changed meanwhile is imported under a new name.
 - **Turkish and Thai:** clearer wording.
 
+## Fixed
+
+- **App backups could come out empty** when WQ Files didn't have access to the app's folder yet; it worked on the second or third try. Backup now fails with "try again" instead, and an empty backup is never restored (restoring one would empty the app's data).
+
 ## Credit
 
 Sandbox technique: [worse_query](https://github.com/forcequitOS/worse_query) by Taj C (forcequit). Container enumeration: [KAMUI](https://github.com/murk-sus/kamui-escape) by murk-sus. Translations: iosrxwy (Simplified Chinese), hfip (Arabic), hooray804 (Korean), Reinascape (Russian). Thanks to everyone who sent Logs and ideas. GPL-3.0-or-later.
 
-SHA-256 of WQFiles.ipa: `a2d159b03e27bea6c168ae68e350410f4d3388b19657239b4d1b72f33e91c639`
+SHA-256 of WQFiles.ipa: `b3bb838c7aa6269027062bf4edf006cb37078abad1f1fa1ba9a052b781f18fc3`
