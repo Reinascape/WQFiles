@@ -2519,34 +2519,33 @@ static NSString *wq_free_name_in(NSString *dir, NSString *name, NSMutableSet<NSS
     NSString *dir = _path;
     NSArray<NSString *> *sources = [urls valueForKey:@"path"];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSUInteger taken = 0;
+        NSMutableDictionary<NSString *, NSDictionary *> *conflicts = [NSMutableDictionary new];
         for (NSString *source in sources) {
-            struct stat st;
-            if (wq_stat([dir stringByAppendingPathComponent:source.lastPathComponent], &st) && S_ISREG(st.st_mode)) taken++;
+            NSString *destination = [dir stringByAppendingPathComponent:source.lastPathComponent];
+            conflicts[source] = wq_file_version(destination);
         }
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (!taken) { [self importFiles:sources into:dir replacing:NO]; return; }
+            if (!conflicts.count) { [self importFiles:sources into:dir replacing:nil]; return; }
             UIAlertController *ask = wq_alert_controller(@"Replace existing files?",
                 WQLocalizedFormat(@"%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?",
-                                  (unsigned long)taken, (unsigned long)sources.count), UIAlertControllerStyleAlert);
+                                  (unsigned long)conflicts.count, (unsigned long)sources.count), UIAlertControllerStyleAlert);
             [ask addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, ^(UIAlertAction *__unused a) {
                 for (NSString *source in sources) [NSFileManager.defaultManager removeItemAtPath:source error:nil];
             })];
             [ask addAction:wq_alert_action(@"Keep Both", UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) {
-                [self importFiles:sources into:dir replacing:NO];
+                [self importFiles:sources into:dir replacing:nil];
             })];
             [ask addAction:wq_alert_action(@"Replace All", UIAlertActionStyleDestructive, ^(UIAlertAction *__unused a) {
-                [self importFiles:sources into:dir replacing:YES];
+                [self importFiles:sources into:dir replacing:conflicts];
             })];
             [self presentViewController:ask animated:YES completion:nil];
         });
     });
 }
 
-// The picker's local copies are removed afterwards. `replacing`: a regular
-// file of the same name is overwritten (backed up first); otherwise, and for
-// anything that isn't a regular file, the import gets a free name.
-- (void)importFiles:(NSArray<NSString *> *)sources into:(NSString *)dir replacing:(BOOL)replacing
+// Replace only the versions shown in the confirmation. Other files get a
+// free name, including destinations that appeared after the preflight.
+- (void)importFiles:(NSArray<NSString *> *)sources into:(NSString *)dir replacing:(NSDictionary<NSString *, NSDictionary *> *)versions
 {
     [self runBusy:WQLocalized(@"Importing") failure:WQLocalizedNullable(@"Import failed") work:^BOOL(NSString **error, NSString **note) {
         NSMutableSet<NSString *> *claimed = [NSMutableSet new];
@@ -2555,11 +2554,11 @@ static NSString *wq_free_name_in(NSString *dir, NSString *name, NSMutableSet<NSS
         for (NSString *source in sources) {
             NSString *e = nil;
             NSString *existing = [dir stringByAppendingPathComponent:source.lastPathComponent];
-            struct stat st;
+            NSDictionary *expected = versions[source];
             BOOL ok;
             NSString *name = source.lastPathComponent;
-            if (replacing && ![claimed containsObject:name.lowercaseString] && wq_stat(existing, &st) && S_ISREG(st.st_mode)) {
-                ok = wq_write_from_file(existing, source, &e);
+            if (expected && ![claimed containsObject:name.lowercaseString]) {
+                ok = wq_write_from_file_if_unchanged(existing, source, expected, &e);
                 [claimed addObject:name.lowercaseString];
                 if (ok) replaced++;
             } else {

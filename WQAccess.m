@@ -884,13 +884,27 @@ BOOL wq_write_from_file(NSString *path, NSString *source, NSString **errorText)
     return wq_write_from_file_with_backup(path, source, NULL, errorText);
 }
 
+static BOOL wq_write_from_file_checked(NSString *path, NSString *source, NSDictionary *expected,
+                                       NSString **backupUnit, NSString **errorText);
+
 BOOL wq_write_from_file_with_backup(NSString *path, NSString *source, NSString **backupUnit, NSString **errorText)
+{
+    return wq_write_from_file_checked(path, source, nil, backupUnit, errorText);
+}
+
+BOOL wq_write_from_file_if_unchanged(NSString *path, NSString *source, NSDictionary *expected, NSString **errorText)
+{
+    return wq_write_from_file_checked(path, source, expected, NULL, errorText);
+}
+
+static BOOL wq_write_from_file_checked(NSString *path, NSString *source, NSDictionary *expected,
+                                       NSString **backupUnit, NSString **errorText)
 {
     if (backupUnit) *backupUnit = nil;
     int in = WQOpenRegularAt(AT_FDCWD, source.fileSystemRepresentation, O_RDONLY, 0);
     if (in < 0) { if (errorText) *errorText = wq_errno(errno); return NO; }
     WQMutation mutation;
-    if (!wq_mutation_open(path, nil, &mutation, O_RDWR, errorText)) { close(in); return NO; }
+    if (!wq_mutation_open(path, expected, &mutation, O_RDWR, errorText)) { close(in); return NO; }
     struct stat src;
     if (fstat(in, &src) != 0 || WQSameObject(&src, &mutation.before)) {
         if (errorText) *errorText = WQLocalized(@"Source and destination are the same file");
