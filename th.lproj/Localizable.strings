@@ -39,7 +39,7 @@
 "Select" = "เลือก";
 "Select All" = "เลือกทั้งหมด";
 "Done" = "เสร็จสิ้น";
-"Done Reordering" = "เสร็จสิ้นการเรียงลำดับ";
+"Done Reordering" = "จัดลำดับเสร็จแล้ว";
 "Reorder Items" = "เรียงลำดับรายการ";
 "Save" = "บันทึก";
 "Edit" = "แก้ไข";
@@ -890,7 +890,7 @@
 "The data names an invalid app identifier (%@)." = "ข้อมูลระบุตัวระบุแอปที่ไม่ถูกต้อง (%@)";
 "This data names more than one app (%@). Importing it as a backup of %@ (%@) and restoring it can break the app." = "ข้อมูลนี้ระบุมากกว่าหนึ่งแอป (%@) การนำเข้าเป็นข้อมูลสำรองของ %@ (%@) และกู้คืนอาจทำให้แอปเสียหาย";
 "%@ An unfinished copy remains in %@." = "%@ มีสำเนาที่ไม่สมบูรณ์เหลืออยู่ใน %@";
-"Finishing…" = "กำลังเสร็จสิ้น…";
+"Finishing…" = "กำลังดำเนินการขั้นสุดท้าย…";
 "It had already finished when you cancelled, so the result was kept." = "เสร็จสิ้นแล้วก่อนที่คุณจะยกเลิก จึงเก็บผลลัพธ์ไว้";
 "The item was moved, replaced or changed after it was selected. It was left as it is." = "รายการถูกย้าย แทนที่ หรือเปลี่ยนแปลงหลังจากเลือก จึงปล่อยไว้ตามเดิม";
 "Files are copied to Backups first. Links and special files (pipes, sockets) are removed without a backup and can't be restored." = "ไฟล์จะถูกคัดลอกไปยังข้อมูลสำรองก่อน ลิงก์และไฟล์พิเศษ (pipe, socket) จะถูกลบโดยไม่สำรองและกู้คืนไม่ได้";
@@ -901,7 +901,7 @@
 "Some backups could not be read, so this list may be incomplete." = "อ่านข้อมูลสำรองบางรายการไม่ได้ รายการนี้จึงอาจไม่ครบถ้วน";
 "Backup was edited" = "ข้อมูลสำรองถูกแก้ไข";
 "The files in %@ of this backup changed after WQ Files made it, for example because files from another backup were put in. Restore the backup as it is now? The app's current data is still backed up first." = "ไฟล์ใน %@ ของข้อมูลสำรองนี้เปลี่ยนแปลงหลังจาก WQ Files สร้างขึ้น เช่น มีการนำไฟล์จากข้อมูลสำรองอื่นใส่เข้ามา กู้คืนข้อมูลสำรองตามสภาพปัจจุบันหรือไม่ ข้อมูลปัจจุบันของแอปจะยังคงถูกสำรองก่อน";
-"Restore Anyway" = "กู้คืนต่อไป";
+"Restore Anyway" = "กู้คืนแม้มีการแก้ไข";
 "Replace existing files?" = "แทนที่ไฟล์ที่มีอยู่หรือไม่";
 "%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "ไฟล์ %lu จาก %lu ไฟล์มีอยู่ที่นี่แล้ว แทนที่ (แต่ละไฟล์จะถูกสำรองก่อน) หรือเก็บไว้ทั้งสอง";
 "Keep Both" = "เก็บทั้งสอง";
