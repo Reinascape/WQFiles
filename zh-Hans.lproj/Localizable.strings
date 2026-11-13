@@ -908,3 +908,5 @@
 "Replace All" = "全部替换";
 "Extract and Open" = "解压并打开";
 "Open as File" = "作为文件打开";
+"Duplicate" = "创建副本";
+"Duplicating…" = "正在创建副本…";

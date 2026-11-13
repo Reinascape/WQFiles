@@ -2210,6 +2210,13 @@ static NSString *wq_temp_work_dir(NSString *prefix)
             [actions addObject:remove];
         }
         if ([strongSelf canEditHere]) {
+            if (!current.isLink && (current.isDir || current.isRegular)) {
+                [actions addObject:[UIAction actionWithTitle:WQLocalized(@"Duplicate") image:[UIImage systemImageNamed:@"plus.square.on.square"]
+                                                  identifier:nil handler:^(UIAction *__unused a) {
+                    WQItem *latest = currentItem();
+                    if (latest) [weakSelf duplicateItem:latest];
+                }]];
+            }
             if (!current.isDir && current.isRegular &&
                 [current.name.pathExtension caseInsensitiveCompare:@"zip"] == NSOrderedSame) {
                 [actions addObject:[UIAction actionWithTitle:WQLocalizedNullable(@"Extract") image:[UIImage systemImageNamed:@"archivebox"]
@@ -2505,6 +2512,29 @@ static NSString *wq_free_name_in(NSString *dir, NSString *name, NSMutableSet<NSS
             else finish();
         });
     });
+}
+
+- (void)duplicateItem:(WQItem *)item
+{
+    if (![self canEditHere] || item.isLink || !(item.isRegular || item.isDir)) return;
+    NSString *source = item.path;
+    NSString *directory = source.stringByDeletingLastPathComponent;
+    NSDictionary *identity = item.identity;
+    BOOL isDirectory = item.isDir;
+    [self runBusy:WQLocalized(@"Duplicating…") failure:WQLocalized(@"Copying failed.")
+             work:^BOOL(NSString **error, NSString **__unused note) {
+        if (!identity || ![identity isEqualToDictionary:wq_item_identity(source)]) {
+            *error = WQLocalized(@"The item was moved, replaced or changed after it was selected. It was left as it is.");
+            return NO;
+        }
+        // Reserve the original name even if it disappears after the identity check.
+        NSMutableSet *claimed = [NSMutableSet setWithObject:source.lastPathComponent.lowercaseString];
+        NSString *name = wq_free_name_in(directory, source.lastPathComponent, claimed);
+        if (!name) return NO;
+        NSString *destination = [directory stringByAppendingPathComponent:name];
+        return isDirectory ? wq_copy_tree_new(source, destination, nil, error)
+                           : wq_create_file_from(destination, source, error);
+    }];
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
