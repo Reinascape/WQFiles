@@ -906,3 +906,5 @@
 "%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu / %lu dosya burada zaten var. Değiştirilsin mi (her biri önce yedeklenir) yoksa ikisi de saklansın mı?";
 "Keep Both" = "İkisini de Sakla";
 "Replace All" = "Tümünü Değiştir";
+"Extract and Open" = "Çıkar ve Aç";
+"Open as File" = "Dosya Olarak Aç";

@@ -906,3 +906,5 @@
 "%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?";
 "Keep Both" = "Keep Both";
 "Replace All" = "Replace All";
+"Extract and Open" = "Extract and Open";
+"Open as File" = "Open as File";

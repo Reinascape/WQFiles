@@ -906,3 +906,5 @@
 "%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu 个文件（共 %lu 个）已存在于此。要替换它们（每个都会先备份）还是两者都保留？";
 "Keep Both" = "两者都保留";
 "Replace All" = "全部替换";
+"Extract and Open" = "解压并打开";
+"Open as File" = "作为文件打开";

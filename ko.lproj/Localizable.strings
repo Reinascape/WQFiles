@@ -906,3 +906,5 @@
 "%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu개 파일(총 %lu개 중)이 이미 여기에 있습니다. 대치하시겠습니까(각 파일은 먼저 백업됨), 아니면 둘 다 유지하시겠습니까?";
 "Keep Both" = "둘 다 유지";
 "Replace All" = "모두 대치";
+"Extract and Open" = "압축 풀고 열기";
+"Open as File" = "파일로 열기";

@@ -906,3 +906,5 @@
 "%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu dos %lu arquivos já existem aqui. Substituí-los (cada um é salvo antes) ou manter ambos?";
 "Keep Both" = "Manter Ambos";
 "Replace All" = "Substituir Todos";
+"Extract and Open" = "Extrair e Abrir";
+"Open as File" = "Abrir como Arquivo";

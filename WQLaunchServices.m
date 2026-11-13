@@ -204,11 +204,11 @@ static const WQLSLayout kWQLSLayouts[] = {
     { "27.2b", 0x25c, 0x10, 0x6c, 0x70, 0x78, 0x00, 0x120, 0x04, 0x58 },
     { "27.2c", 0x25c, 0x0c, 0x6c, 0x70, 0x78, 0x00, 0x120, 0x04, 0x58 },
     { "27.2d", 0x25c, 0x10, 0x6c, 0x70, 0x78, 0x00, 0x120, 0x00, 0x58 },
-    // iOS 27.3 beta (layout hint in issue #50): app records as on 27.2, but
-    // plugin records grew. The hint shows 0x134-byte records with a container
-    // at +0x58 (about as many as the extensions) and 0xf0-byte ones with one
-    // at +0x6c; which is the plugin record, and where its bundle id sits,
-    // isn't known yet, so all four are tried and the best-mapping one wins.
+    // iOS 27.3 beta (issue #50): app records as on 27.2, plugin records
+    // changed. Confirmed on a device (24C5037i): "27.3d", 0xf0-byte plugin
+    // records with the bundle id at +0x04 and the container at +0x6c, mapped
+    // 1491 of 1493 container paths. The other three candidates from the
+    // layout hint stay as fallbacks for other 27.3 builds.
     { "27.3",  0x25c, 0x0c, 0x6c, 0x70, 0x78, 0x00, 0x134, 0x00, 0x58 },
     { "27.3b", 0x25c, 0x0c, 0x6c, 0x70, 0x78, 0x00, 0x134, 0x04, 0x58 },
     { "27.3c", 0x25c, 0x0c, 0x6c, 0x70, 0x78, 0x00, 0x0f0, 0x00, 0x6c },

@@ -1532,6 +1532,16 @@ static NSString *wq_temp_work_dir(NSString *prefix)
                  work:(BOOL (^)(WQArchiveCancelled cancelled, WQArchiveProgress progress, void (^finishing)(void),
                                 NSString **error, NSString **note))work
 {
+    [self runArchiveJob:title failure:failureTitle work:work done:nil];
+}
+
+// `done` runs on success (not after a cancel) instead of showing the note;
+// it gets the note to show where it fits.
+- (void)runArchiveJob:(NSString *)title failure:(NSString *)failureTitle
+                 work:(BOOL (^)(WQArchiveCancelled cancelled, WQArchiveProgress progress, void (^finishing)(void),
+                                NSString **error, NSString **note))work
+                 done:(void (^)(NSString *note))done
+{
     WQScanCancellation *cancellation = [WQScanCancellation new];
     UIAlertController *hud = wq_alert_controller(title, @"Starting…", UIAlertControllerStyleAlert);
     [hud addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, ^(UIAlertAction *__unused a) { [cancellation cancel]; })];
@@ -1562,6 +1572,7 @@ static NSString *wq_temp_work_dir(NSString *prefix)
                 else if (ok && wasCancelled)
                     wq_alert(self, title, note ? [NSString stringWithFormat:@"%@\n\n%@", WQLocalized(@"It had already finished when you cancelled, so the result was kept."), note]
                                                : WQLocalized(@"It had already finished when you cancelled, so the result was kept."));
+                else if (ok && done) { [self reload]; done(note); return; }
                 else if (ok && note) wq_alert(self, title, note);
                 [self reload];
             };
@@ -1609,6 +1620,31 @@ static NSString *wq_temp_work_dir(NSString *prefix)
 
 - (void)extractZip:(NSString *)zipPath
 {
+    [self extractZip:zipPath open:NO];
+}
+
+// Tapping a ZIP (issue #41): extract it next to itself and open the folder,
+// or open the file itself as before.
+- (void)offerZipOpen:(WQItem *)item
+{
+    UIAlertController *sheet = wq_alert_controller(WQVerbatim(item.name), nil, UIAlertControllerStyleActionSheet);
+    [sheet addAction:wq_alert_action(@"Extract and Open", UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) {
+        [self extractZip:item.path open:YES];
+    })];
+    [sheet addAction:wq_alert_action(@"Open as File", UIAlertActionStyleDefault, ^(UIAlertAction *__unused a) {
+        self->_scanNeedsRefresh = YES;
+        wq_open_file(self.navigationController, item.path, self.readOnly, WQOpenAuto);
+    })];
+    [sheet addAction:wq_alert_action(@"Cancel", UIAlertActionStyleCancel, nil)];
+    NSUInteger row = [_items indexOfObject:item];
+    UITableViewCell *cell = row == NSNotFound ? nil : [self.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:(NSInteger)row inSection:0]];
+    sheet.popoverPresentationController.sourceView = cell ?: self.view;
+    sheet.popoverPresentationController.sourceRect = (cell ?: self.view).bounds;
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)extractZip:(NSString *)zipPath open:(BOOL)openAfter
+{
     NSString *base = zipPath.lastPathComponent.stringByDeletingPathExtension;
     NSString *folder = [self unusedName:base.length ? base : @"Archive" extension:nil];
     NSString *dest = [_path stringByAppendingPathComponent:folder];
@@ -1648,7 +1684,14 @@ static NSString *wq_temp_work_dir(NSString *prefix)
             *note = WQLocalizedFormat(key, (unsigned long)files, folder, (unsigned long)skipped);
         }
         return ok;
-    }];
+    } done:openAfter ? ^(NSString *note) {
+        WQDirViewController *dir = [[WQDirViewController alloc] initWithPath:dest title:folder];
+        dir.readOnly = self.readOnly;
+        [self.navigationController pushViewController:dir animated:YES];
+        if (note) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            wq_alert(dir, WQLocalized(@"Extracting"), note);
+        });
+    } : nil];
 }
 
 // Pull to refresh: container lists are scanned again instead of reused.
@@ -2005,6 +2048,10 @@ static NSString *wq_temp_work_dir(NSString *prefix)
             wq_alert(self, @"Cannot open this item", item.isLink
                      ? @"Symbolic links are not followed for viewing, sharing or editing."
                      : @"Only regular files can be viewed.");
+            return;
+        }
+        if ([self canEditHere] && [item.name.pathExtension caseInsensitiveCompare:@"zip"] == NSOrderedSame) {
+            [self offerZipOpen:item];
             return;
         }
         _scanNeedsRefresh = YES;

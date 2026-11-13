@@ -902,3 +902,5 @@
 "%lu of the %lu files already exist here. Replace them (each is backed up first) or keep both?" = "%lu من أصل %lu ملف موجودة هنا بالفعل. هل تريد استبدالها (يُنسخ كل منها احتياطياً أولاً) أم الاحتفاظ بالاثنين؟";
 "Keep Both" = "الاحتفاظ بالاثنين";
 "Replace All" = "استبدال الكل";
+"Extract and Open" = "فك الضغط والفتح";
+"Open as File" = "فتح كملف";
